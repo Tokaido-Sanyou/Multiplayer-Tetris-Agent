@@ -1,7 +1,6 @@
 import pygame
 
 class KeyHandler:
-    """Translates keyboard input to actions"""
     def __init__(self, action_handler, is_player_one=True):
         self.action_handler = action_handler
         self.is_player_one = is_player_one
@@ -30,6 +29,5 @@ class KeyHandler:
             }
 
     def handle_key(self, key):
-        """Handle a key press by executing the corresponding action"""
         if key in self.key_to_action:
             self.key_to_action[key]() 
