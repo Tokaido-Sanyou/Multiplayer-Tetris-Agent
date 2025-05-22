@@ -118,7 +118,7 @@ class DQNAgent:
     - game.py: Contains game state and piece movement logic
     - piece.py: Defines piece shapes and rotation logic
     """
-    def __init__(self, state_dim, action_dim, learning_rate=1e-4, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+    def __init__(self, state_dim, action_dim, learning_rate=1e-4, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, top_k_ac=3):
         """
         Initialize DQN agent
         Args:
@@ -136,6 +136,7 @@ class DQNAgent:
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+        self.top_k = top_k_ac
         
         # Initialize networks
         self.policy_net = DQN(state_dim, action_dim)
@@ -176,7 +177,9 @@ class DQNAgent:
         with torch.no_grad():
             state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             q_values = self.policy_net(state)
-            return q_values.argmax().item()
+            top_k_q_values, top_k_indices = torch.topk(q_values, self.top_k)  # watch for batching, debug shapes for later
+            return int(np.random.choice(top_k_indices.cpu().numpy())
+            # return q_values.argmax().item()
     
     def update_epsilon(self):
         """Update exploration rate"""
