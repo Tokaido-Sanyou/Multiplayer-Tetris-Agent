@@ -21,11 +21,11 @@ class SharedFeatureExtractor(nn.Module):
             nn.ReLU()
         )
         
-        # MLP for piece processing (3 pieces * 16 features)
-        self.piece_mlp = nn.Sequential(
-            nn.Linear(48, 128),  # 3 pieces * 16 features
+        # Scalar embedding for next and hold pieces
+        self.piece_embed = nn.Sequential(
+            nn.Linear(2, 32),  # next + hold scalar IDs
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(32, 32),
             nn.ReLU()
         )
     
@@ -33,20 +33,20 @@ class SharedFeatureExtractor(nn.Module):
         """
         Forward pass through the feature extractor
         Args:
-            x: Input tensor of shape (batch_size, 248)
+            x: Input tensor of shape (batch_size, 202)
         Returns:
             Extracted features
         """
         batch_size = x.size(0)
         grid = x[:, :200].view(batch_size, 1, 20, 10)  # Grid: 20x10
-        pieces = x[:, 200:]  # Pieces: 3 * 16 features
+        pieces = x[:, 200:]  # Scalars: next_piece + hold_piece
         
         # Process grid with CNN
         grid_features = self.grid_conv(grid)
         grid_features = grid_features.view(batch_size, -1)
         
-        # Process pieces with MLP
-        piece_features = self.piece_mlp(pieces)
+        # Process piece scalars with embedding
+        piece_features = self.piece_embed(pieces)
         
         # Combine features
         return torch.cat([grid_features, piece_features], dim=1)
@@ -74,7 +74,7 @@ class ActorCritic(nn.Module):
         """
         Initialize Actor-Critic network
         Args:
-            input_dim: Dimension of input state (248)
+            input_dim: Dimension of input state (202)
             output_dim: Number of possible actions (7)
         """
         super(ActorCritic, self).__init__()
@@ -84,7 +84,7 @@ class ActorCritic(nn.Module):
         
         # Actor network (policy)
         self.actor = nn.Sequential(
-            nn.Linear(64 * 20 * 10 + 128, 512),
+            nn.Linear(64 * 20 * 10 + 32, 512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.ReLU(),
@@ -94,7 +94,7 @@ class ActorCritic(nn.Module):
         
         # Critic network (value)
         self.critic = nn.Sequential(
-            nn.Linear(64 * 20 * 10 + 128, 512),
+            nn.Linear(64 * 20 * 10 + 32, 512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.ReLU(),
@@ -105,7 +105,7 @@ class ActorCritic(nn.Module):
         """
         Forward pass through the network
         Args:
-            x: Input tensor of shape (batch_size, 248)
+            x: Input tensor of shape (batch_size, 202)
         Returns:
             Tuple of (action_probs, state_value)
         """
@@ -123,7 +123,7 @@ class ActorCriticAgent:
         """
         Initialize Actor-Critic agent
         Args:
-            state_dim: Dimension of state space (248)
+            state_dim: Dimension of state space (202)
             action_dim: Number of possible actions (7)
             actor_lr: Learning rate for actor
             critic_lr: Learning rate for critic

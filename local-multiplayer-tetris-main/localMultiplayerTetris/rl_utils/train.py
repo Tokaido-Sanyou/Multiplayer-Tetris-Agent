@@ -6,27 +6,23 @@ from .actor_critic import ActorCriticAgent
 
 def preprocess_state(state):
     """
-    Preprocess state dictionary into a flat tensor
+    Preprocess state dictionary into a flat array
     
     State Structure (from tetris_env.py):
-    - grid: 20x10 matrix (0 for empty, 1-7 for different piece colors)
-    - current_piece: 4x4 matrix (0 for empty, 1 for filled)
-    - next_piece: 4x4 matrix (0 for empty, 1 for filled)
-    - hold_piece: 4x4 matrix (0 for empty, 1 for filled)
+    - grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
+    - next_piece: scalar ID (0-7)
+    - hold_piece: scalar ID (0-7)
     
     Returns:
-        Flattened tensor of shape (248,) containing:
+        Flattened array of shape (202,) containing:
         - First 200 values: Flattened grid
-        - Next 16 values: Flattened current piece
-        - Next 16 values: Flattened next piece
-        - Last 16 values: Flattened hold piece
+        - Next value: next_piece
+        - Last value: hold_piece
     """
     grid = state['grid'].flatten()
-    current_piece = state['current_piece'].flatten()
-    next_piece = state['next_piece'].flatten()
-    hold_piece = state['hold_piece'].flatten()
-    
-    return np.concatenate([grid, current_piece, next_piece, hold_piece])
+    next_piece = np.array([state['next_piece']])
+    hold_piece = np.array([state['hold_piece']])
+    return np.concatenate([grid, next_piece, hold_piece])
 
 def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interval=50):
     """
@@ -200,7 +196,7 @@ def evaluate_agent(env, agent, num_episodes=10):
 if __name__ == '__main__':
     # Create environment and agent
     env = TetrisEnv()
-    state_dim = 248  # 20x10 grid + 3x(4x4) pieces
+    state_dim = 202  # 20x10 grid + 2 scalars
     action_dim = 7   # 7 possible actions
     agent = ActorCriticAgent(state_dim, action_dim)
     

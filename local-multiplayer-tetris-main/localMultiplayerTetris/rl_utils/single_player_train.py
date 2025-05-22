@@ -30,7 +30,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50):
         env = TetrisEnv(single_player=True)
         
         # Create agent
-        state_dim = 248  # 20x10 grid + 3x(4x4) pieces
+        state_dim = 202  # 20x10 grid + next_piece + hold_piece scalars
         action_dim = 7   # 7 possible actions
         agent = ActorCriticAgent(state_dim, action_dim)
         

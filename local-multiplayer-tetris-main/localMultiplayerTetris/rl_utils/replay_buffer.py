@@ -81,21 +81,15 @@ class ReplayBuffer:
         Convert state dictionary to tensor
         State structure defined in tetris_env.py:
         - Grid: 20x10 matrix (200 values)
-        - Current piece: 4x4 matrix (16 values)
-        - Next piece: 4x4 matrix (16 values)
-        - Hold piece: 4x4 matrix (16 values)
-        Total: 248 values
+        - Next piece: scalar shape ID (0-7)
+        - Hold piece: scalar shape ID (0-7)
+        Total: 202 values
         """
-        # Flatten grid
         grid = torch.FloatTensor(state['grid'].flatten())
-        
-        # Flatten pieces
-        current_piece = torch.FloatTensor(state['current_piece'].flatten())
-        next_piece = torch.FloatTensor(state['next_piece'].flatten())
-        hold_piece = torch.FloatTensor(state['hold_piece'].flatten())
-        
-        # Concatenate all features
-        return torch.cat([grid, current_piece, next_piece, hold_piece])
+        # Encode next and hold pieces as scalars
+        next_piece = torch.FloatTensor([state['next_piece']])
+        hold_piece = torch.FloatTensor([state['hold_piece']])
+        return torch.cat([grid, next_piece, hold_piece])
     
     def sample(self, batch_size):
         """

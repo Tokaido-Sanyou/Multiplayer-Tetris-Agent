@@ -10,10 +10,9 @@ class DQN(nn.Module):
     
     Input Structure (from tetris_env.py):
     - Grid: 20x10 matrix (200 values)
-    - Current piece: 4x4 matrix (16 values)
-    - Next piece: 4x4 matrix (16 values)
-    - Hold piece: 4x4 matrix (16 values)
-    Total input dimension: 248
+    - Next piece: scalar ID
+    - Hold piece: scalar ID
+    Total input dimension: 202
     
     Output Structure:
     - 7 Q-values corresponding to actions:
@@ -35,7 +34,7 @@ class DQN(nn.Module):
         """
         Initialize DQN network
         Args:
-            input_dim: Dimension of input state (248)
+            input_dim: Dimension of input state (202)
             output_dim: Number of possible actions (7)
         """
         super(DQN, self).__init__()
@@ -50,17 +49,17 @@ class DQN(nn.Module):
             nn.ReLU()
         )
         
-        # MLP for piece processing (3 pieces * 16 features)
-        self.piece_mlp = nn.Sequential(
-            nn.Linear(48, 128),  # 3 pieces * 16 features
+        # Scalar embedding for next and hold pieces
+        self.piece_embed = nn.Sequential(
+            nn.Linear(2, 32),  # next + hold scalar IDs
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(32, 32),
             nn.ReLU()
         )
         
         # Combined network
         self.combined = nn.Sequential(
-            nn.Linear(64 * 20 * 10 + 128, 512),
+            nn.Linear(64 * 20 * 10 + 32, 512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.ReLU(),
@@ -71,21 +70,21 @@ class DQN(nn.Module):
         """
         Forward pass through the network
         Args:
-            x: Input tensor of shape (batch_size, 248)
+            x: Input tensor of shape (batch_size, 202)
         Returns:
             Q-values for each action of shape (batch_size, 7)
         """
         # Reshape input
         batch_size = x.size(0)
         grid = x[:, :200].view(batch_size, 1, 20, 10)  # Grid: 20x10
-        pieces = x[:, 200:]  # Pieces: 3 * 16 features
+        pieces = x[:, 200:]  # Scalars: next_piece + hold_piece
         
         # Process grid with CNN
         grid_features = self.grid_conv(grid)
         grid_features = grid_features.view(batch_size, -1)
         
-        # Process pieces with MLP
-        piece_features = self.piece_mlp(pieces)
+        # Process piece scalars with embedding
+        piece_features = self.piece_embed(pieces)
         
         # Combine features
         combined = torch.cat([grid_features, piece_features], dim=1)
@@ -99,9 +98,8 @@ class DQNAgent:
     
     State Space (from tetris_env.py):
     - Grid: 20x10 matrix (0 for empty, 1-7 for different piece colors)
-    - Current piece: 4x4 matrix (0 for empty, 1 for filled)
-    - Next piece: 4x4 matrix (0 for empty, 1 for filled)
-    - Hold piece: 4x4 matrix (0 for empty, 1 for filled)
+    - Next piece: scalar ID
+    - Hold piece: scalar ID
     
     Action Space (from tetris_env.py):
     - 0: Move Left
@@ -122,7 +120,7 @@ class DQNAgent:
         """
         Initialize DQN agent
         Args:
-            state_dim: Dimension of state space (248)
+            state_dim: Dimension of state space (202)
             action_dim: Number of possible actions (7)
             learning_rate: Learning rate for optimizer
             gamma: Discount factor
@@ -165,9 +163,8 @@ class DQNAgent:
         Args:
             state: Dictionary containing:
                 - grid: 20x10 matrix of piece colors
-                - current_piece: 4x4 matrix of current piece
-                - next_piece: 4x4 matrix of next piece
-                - hold_piece: 4x4 matrix of hold piece
+                - next_piece: scalar ID
+                - hold_piece: scalar ID
         Returns:
             Integer (0-6) representing the selected action
         """
