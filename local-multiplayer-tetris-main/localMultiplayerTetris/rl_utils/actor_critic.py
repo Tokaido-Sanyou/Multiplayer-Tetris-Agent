@@ -180,7 +180,7 @@ class ActorCriticAgent:
             state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             action_probs, _ = self.network(state)
             top_k_ac, top_k_indices = torch.topk(action_probs, self.top_k)
-            return int(np.random.choice(top_k_indices.cpu().numpy())
+            return int(np.random.choice(top_k_indices.cpu().numpy()))
     
             # return action_probs.argmax().item() (uncomment for most exploitative action)
     
