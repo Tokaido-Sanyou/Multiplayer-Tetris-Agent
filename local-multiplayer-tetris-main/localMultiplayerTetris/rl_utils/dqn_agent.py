@@ -178,7 +178,7 @@ class DQNAgent:
             state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             q_values = self.policy_net(state)
             top_k_q_values, top_k_indices = torch.topk(q_values, self.top_k)  # watch for batching, debug shapes for later
-            return int(np.random.choice(top_k_indices.cpu().numpy())
+            return int(np.random.choice(top_k_indices.cpu().numpy()))
             # return q_values.argmax().item()
     
     def update_epsilon(self):

@@ -30,15 +30,13 @@ class TetrisEnv(gym.Env):
         self.action_space = spaces.Discrete(7)
         
         # Define observation space
-        # Grid: 20x10 matrix (0 for empty, 1-7 for different piece colors)
-        # Current piece: 4x4 matrix (0 for empty, 1 for filled)
-        # Next piece: 4x4 matrix (0 for empty, 1 for filled)
-        # Hold piece: 4x4 matrix (0 for empty, 1 for filled)
+        # Grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
+        # Next piece: scalar shape ID (1-7, 0 if none)
+        # Hold piece: scalar shape ID (1-7, 0 if none)
         self.observation_space = spaces.Dict({
-            'grid': spaces.Box(low=0, high=7, shape=(20, 10), dtype=np.int8),
-            'current_piece': spaces.Box(low=0, high=1, shape=(4, 4), dtype=np.int8),
-            'next_piece': spaces.Box(low=0, high=1, shape=(4, 4), dtype=np.int8),
-            'hold_piece': spaces.Box(low=0, high=1, shape=(4, 4), dtype=np.int8)
+            'grid': spaces.Box(low=0, high=2, shape=(20, 10), dtype=np.int8),
+            'next_piece': spaces.Box(low=0, high=7, shape=(), dtype=np.int8),
+            'hold_piece': spaces.Box(low=0, high=7, shape=(), dtype=np.int8)
         })
         
         # Initialize game components
@@ -62,40 +60,22 @@ class TetrisEnv(gym.Env):
         for i in range(20):
             for j in range(10):
                 if grid[i][j] != (0, 0, 0):
-                    grid_obs[i][j] = shape_colors.index(grid[i][j]) + 1
+                    grid_obs[i][j] = 1
         
-        # Get current piece state
-        current_piece = np.zeros((4, 4), dtype=np.int8)
+        # Overlay current falling piece as 2s
         if self.player.current_piece:
-            format = self.player.current_piece.shape[self.player.current_piece.rotation % len(self.player.current_piece.shape)]
-            for i, line in enumerate(format):
-                for j, column in enumerate(line):
-                    if column == '0':
-                        current_piece[i][j] = 1
+            for x, y in convert_shape_format(self.player.current_piece):
+                if 0 <= y < 20 and 0 <= x < 10:
+                    grid_obs[y][x] = 2
         
-        # Get next piece state
-        next_piece = np.zeros((4, 4), dtype=np.int8)
-        if self.player.next_pieces:
-            format = self.player.next_pieces[0].shape[0]
-            for i, line in enumerate(format):
-                for j, column in enumerate(line):
-                    if column == '0':
-                        next_piece[i][j] = 1
-        
-        # Get hold piece state
-        hold_piece = np.zeros((4, 4), dtype=np.int8)
-        if self.player.hold_piece:
-            format = self.player.hold_piece.shape[self.player.hold_piece.rotation % len(self.player.hold_piece.shape)]
-            for i, line in enumerate(format):
-                for j, column in enumerate(line):
-                    if column == '0':
-                        hold_piece[i][j] = 1
+        # Encode next and hold pieces as shape IDs (1-7, 0 if none)
+        next_idx = shapes.index(self.player.next_pieces[0].shape) + 1 if self.player.next_pieces else 0
+        hold_idx = shapes.index(self.player.hold_piece.shape) + 1 if self.player.hold_piece else 0
         
         return {
             'grid': grid_obs,
-            'current_piece': current_piece,
-            'next_piece': next_piece,
-            'hold_piece': hold_piece
+            'next_piece': next_idx,
+            'hold_piece': hold_idx
         }
     
     def _get_reward(self, lines_cleared, game_over):

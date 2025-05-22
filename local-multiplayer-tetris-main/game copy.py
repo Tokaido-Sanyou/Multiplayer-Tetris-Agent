@@ -772,11 +772,11 @@ class Game:
     
     def get_garbage_lines(self, lines_cleared):
         if lines_cleared == 1:
-            return 1
+            return 0
         elif lines_cleared == 2:
             return 1
         elif lines_cleared == 3:
-            return 4
+            return 2
         elif lines_cleared == 4:
             return 4
         return 0

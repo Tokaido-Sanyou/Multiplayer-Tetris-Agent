@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 import logging
-from tetris_env import TetrisEnv
+from ..tetris_env import TetrisEnv
 from .actor_critic import ActorCriticAgent
 from .train import preprocess_state, evaluate_agent
 
