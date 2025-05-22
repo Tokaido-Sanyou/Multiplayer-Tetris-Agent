@@ -119,7 +119,7 @@ class ActorCriticAgent:
     Actor-Critic agent with epsilon-greedy exploration
     """
     def __init__(self, state_dim, action_dim, actor_lr=1e-4, critic_lr=1e-3, gamma=0.99, 
-                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, top_k_ac = 3):
         """
         Initialize Actor-Critic agent
         Args:
@@ -138,6 +138,7 @@ class ActorCriticAgent:
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+        self.top_k = top_k_ac
         
         # Initialize network
         self.network = ActorCritic(state_dim, action_dim)
@@ -169,13 +170,19 @@ class ActorCriticAgent:
         Returns:
             Integer (0-6) representing the selected action
         """
+
+        # exploration (epsilon)
         if np.random.random() < self.epsilon:
             return np.random.randint(self.action_dim)
-        
+
+        # exploitation(top k values?)
         with torch.no_grad():
             state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             action_probs, _ = self.network(state)
-            return action_probs.argmax().item()
+            top_k_ac, top_k_indices = torch.topk(action_probs, self.top_k)
+            return int(np.random.choice(top_k_indices.cpu().numpy())
+    
+            # return action_probs.argmax().item() (uncomment for most exploitative action)
     
     def update_epsilon(self):
         """Update exploration rate"""
