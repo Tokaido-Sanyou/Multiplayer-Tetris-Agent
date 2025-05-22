@@ -63,6 +63,15 @@ class ReplayBuffer:
         state_tensor = self._state_to_tensor(state)
         next_state_tensor = self._state_to_tensor(next_state)
         
+        # Extract only necessary info
+        if info is not None:
+            info = {
+                'lines_cleared': info.get('lines_cleared', 0),
+                'score': info.get('score', 0),
+                'level': info.get('level', 1),
+                'episode_steps': info.get('episode_steps', 0)
+            }
+        
         # Store transition with max priority
         self.buffer.append((state_tensor, action, reward, next_state_tensor, done, info))
         self.priorities.append(self.max_priority)

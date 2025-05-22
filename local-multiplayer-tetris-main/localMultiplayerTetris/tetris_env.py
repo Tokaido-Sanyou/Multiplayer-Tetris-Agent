@@ -13,7 +13,7 @@ class TetrisEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self):
+    def __init__(self, single_player=False):
         super(TetrisEnv, self).__init__()
         
         # Initialize pygame
@@ -43,8 +43,9 @@ class TetrisEnv(gym.Env):
         
         # Initialize game components
         self.surface = pygame.Surface((1400, 700))
-        self.game = Game(self.surface)
-        self.player = self.game.player1  # Use player1 for single-agent training
+        self.game = None  # Will be initialized in reset()
+        self.player = None  # Will be set in reset()
+        self.single_player = single_player
         
         # Initialize pygame clock
         self.clock = pygame.time.Clock()
@@ -101,15 +102,15 @@ class TetrisEnv(gym.Env):
         """Calculate reward based on game state"""
         reward = 0
         
-        # Reward for clearing lines
+        # Reward for clearing lines (scaled by level)
         if lines_cleared == 1:
-            reward += 100
+            reward += 100 * self.game.level
         elif lines_cleared == 2:
-            reward += 300
+            reward += 300 * self.game.level
         elif lines_cleared == 3:
-            reward += 500
+            reward += 500 * self.game.level
         elif lines_cleared == 4:  # Tetris
-            reward += 800
+            reward += 800 * self.game.level
         
         # Penalty for game over
         if game_over:
@@ -118,13 +119,24 @@ class TetrisEnv(gym.Env):
         # Small penalty for each step to encourage faster play
         reward -= 1
         
-        # Penalty for high stack height
-        max_height = max([y for x, y in self.player.locked_positions.keys()]) if self.player.locked_positions else 0
-        reward -= max_height * 0.5
+        # Penalty for high stack height (normalized by board height)
+        try:
+            if self.player.locked_positions:
+                max_height = max([y for x, y in self.player.locked_positions.keys()])
+                # Normalize height penalty (0 to 1)
+                height_penalty = max_height / 20.0  # 20 is board height
+                reward -= height_penalty * 50  # Scale penalty
+        except (ValueError, KeyError):
+            pass  # If no blocks, skip height penalty
         
-        # Penalty for holes
-        holes = self._count_holes()
-        reward -= holes * 10
+        # Penalty for holes (normalized by board size)
+        try:
+            holes = self._count_holes()
+            # Normalize hole penalty (0 to 1)
+            hole_penalty = holes / 200.0  # 200 is board size (20x10)
+            reward -= hole_penalty * 100  # Scale penalty
+        except Exception:
+            pass  # If error counting holes, skip hole penalty
         
         return reward
     
@@ -141,6 +153,22 @@ class TetrisEnv(gym.Env):
                     holes += 1
         return holes
     
+    def _ensure_single_player_mode(self):
+        """Ensure player 2 is completely disabled in single player mode"""
+        if self.single_player:
+            # Disable player 2's piece
+            self.game.player2.current_piece = None
+            self.game.player2.next_pieces = []
+            self.game.player2.hold_piece = None
+            self.game.player2.locked_positions = {}
+            
+            # Disable player 2's score and level
+            self.game.player2.score = 0
+            self.game.player2.level = 1
+            
+            # Disable player 2's block pool
+            self.game.player2.block_pool = None
+
     def step(self, action):
         """Execute one time step within the environment"""
         self.episode_steps += 1
@@ -163,6 +191,10 @@ class TetrisEnv(gym.Env):
         
         # Update game state
         lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
+        
+        # Ensure single player mode is maintained
+        self._ensure_single_player_mode()
+        
         game_over = check_lost(self.player.locked_positions)
         
         # Get observation
@@ -186,10 +218,21 @@ class TetrisEnv(gym.Env):
     
     def reset(self):
         """Reset the environment to initial state"""
-        # Reset game
-        self.surface = pygame.Surface((1400, 700))
-        self.game = Game(self.surface)
+        # Initialize or reset game
+        if self.game is None:
+            self.game = Game(self.surface)
+        else:
+            # Reset game state without creating new surface
+            self.game = Game(self.surface)
+        
         self.player = self.game.player1
+        
+        # In single player mode, disable player 2
+        if self.single_player:
+            self.game.player2.current_piece = None
+            self.game.player2.next_pieces = []
+            self.game.player2.hold_piece = None
+            self.game.player2.locked_positions = {}
         
         # Reset episode tracking
         self.episode_steps = 0
@@ -208,4 +251,8 @@ class TetrisEnv(gym.Env):
     
     def close(self):
         """Clean up resources"""
+        if self.game is not None:
+            self.game = None
+        if self.surface is not None:
+            self.surface = None
         pygame.quit() 
