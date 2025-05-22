@@ -252,6 +252,84 @@ class BlockPool:
         # Get the next 'count' blocks starting from current_index + 1
         return [self.pool[current_index + 1 + i] for i in range(count)]
 
+class ActionHandler:
+    """Handles all possible actions in the game"""
+    def __init__(self, player):
+        self.player = player
+
+    def move_left(self):
+        self.player.current_piece.x -= 1
+        if not (valid_space(self.player.current_piece, create_grid(self.player.locked_positions))):
+            self.player.current_piece.x += 1
+
+    def move_right(self):
+        self.player.current_piece.x += 1
+        if not (valid_space(self.player.current_piece, create_grid(self.player.locked_positions))):
+            self.player.current_piece.x -= 1
+
+    def move_down(self):
+        self.player.current_piece.y += 1
+        if not (valid_space(self.player.current_piece, create_grid(self.player.locked_positions))):
+            self.player.current_piece.y -= 1
+
+    def rotate_cw(self):
+        self.player.current_piece.rotate(1, create_grid(self.player.locked_positions))
+
+    def rotate_ccw(self):
+        self.player.current_piece.rotate(-1, create_grid(self.player.locked_positions))
+
+    def hard_drop(self):
+        if hard_drop(self.player.current_piece, create_grid(self.player.locked_positions)):
+            self.player.change_piece = True
+
+    def hold_piece(self):
+        if self.player.can_hold:
+            if self.player.hold_piece is None:
+                self.player.hold_piece = self.player.current_piece
+                self.player.current_block_index += 1
+                self.player.block_pool.ensure_blocks_ahead(self.player.current_block_index)
+                self.player.current_piece = get_shape_from_index(self.player.block_pool.get_block_at(self.player.current_block_index))
+                self.player.next_pieces = [get_shape_from_index(idx) for idx in 
+                                        self.player.block_pool.get_next_blocks(self.player.current_block_index)]
+            else:
+                self.player.hold_piece, self.player.current_piece = self.player.current_piece, self.player.hold_piece
+                self.player.current_piece.x, self.player.current_piece.y = 3, 0  # Reset position for held piece
+            self.player.can_hold = False
+
+class KeyHandler:
+    """Translates keyboard input to actions"""
+    def __init__(self, action_handler, is_player_one=True):
+        self.action_handler = action_handler
+        self.is_player_one = is_player_one
+        self.key_to_action = self._setup_key_mappings()
+
+    def _setup_key_mappings(self):
+        if self.is_player_one:
+            return {
+                pygame.K_a: self.action_handler.move_left,
+                pygame.K_d: self.action_handler.move_right,
+                pygame.K_s: self.action_handler.move_down,
+                pygame.K_w: self.action_handler.rotate_cw,
+                pygame.K_q: self.action_handler.rotate_ccw,
+                pygame.K_SPACE: self.action_handler.hard_drop,
+                pygame.K_c: self.action_handler.hold_piece
+            }
+        else:
+            return {
+                pygame.K_LEFT: self.action_handler.move_left,
+                pygame.K_RIGHT: self.action_handler.move_right,
+                pygame.K_DOWN: self.action_handler.move_down,
+                pygame.K_UP: self.action_handler.rotate_cw,
+                pygame.K_RSHIFT: self.action_handler.rotate_ccw,
+                pygame.K_RETURN: self.action_handler.hard_drop,
+                pygame.K_RCTRL: self.action_handler.hold_piece
+            }
+
+    def handle_key(self, key):
+        """Handle a key press by executing the corresponding action"""
+        if key in self.key_to_action:
+            self.key_to_action[key]()
+
 class Player:
     def __init__(self, block_pool, is_player_one=True):
         self.locked_positions = {}
@@ -263,7 +341,11 @@ class Player:
         self.change_piece = False
         self.is_player_one = is_player_one
         self.block_pool = block_pool
-        self.current_block_index = 0  # Index of current piece in the pool
+        self.current_block_index = 0
+        
+        # Initialize action and key handlers
+        self.action_handler = ActionHandler(self)
+        self.key_handler = KeyHandler(self.action_handler, is_player_one)
         
         # Initialize first piece and next pieces
         self.block_pool.ensure_blocks_ahead(self.current_block_index)
@@ -271,77 +353,12 @@ class Player:
         self.current_piece = get_shape_from_index(first_piece_index)
         self.next_pieces = [get_shape_from_index(idx) for idx in 
                           self.block_pool.get_next_blocks(self.current_block_index)]
-    
+
     def handle_input(self, event):
-        if self.is_player_one:
-            # Player 1 controls (Left side)
-            if event.key == pygame.K_a:
-                self.current_piece.x -= 1
-                if not (valid_space(self.current_piece, create_grid(self.locked_positions))):
-                    self.current_piece.x += 1
-            if event.key == pygame.K_d:
-                self.current_piece.x += 1
-                if not (valid_space(self.current_piece, create_grid(self.locked_positions))):
-                    self.current_piece.x -= 1
-            if event.key == pygame.K_s:
-                self.current_piece.y += 1
-                if not (valid_space(self.current_piece, create_grid(self.locked_positions))):
-                    self.current_piece.y -= 1
-            if event.key == pygame.K_w:  # Clockwise rotation
-                self.current_piece.rotate(1, create_grid(self.locked_positions))
-            if event.key == pygame.K_q:  # Counter-clockwise rotation
-                self.current_piece.rotate(-1, create_grid(self.locked_positions))
-            if event.key == pygame.K_SPACE:  # Hard drop
-                if hard_drop(self.current_piece, create_grid(self.locked_positions)):
-                    self.change_piece = True
-            if event.key == pygame.K_c:  # Hold
-                if self.can_hold:
-                    if self.hold_piece is None:
-                        self.hold_piece = self.current_piece
-                        self.current_block_index += 1
-                        self.block_pool.ensure_blocks_ahead(self.current_block_index)
-                        self.current_piece = get_shape_from_index(self.block_pool.get_block_at(self.current_block_index))
-                        self.next_pieces = [get_shape_from_index(idx) for idx in 
-                                          self.block_pool.get_next_blocks(self.current_block_index)]
-                    else:
-                        self.hold_piece, self.current_piece = self.current_piece, self.hold_piece
-                        self.current_piece.x, self.current_piece.y = 3, 0  # Reset position for held piece
-                    self.can_hold = False
-        else:
-            # Player 2 controls (Right side - Arrow keys)
-            if event.key == pygame.K_LEFT:
-                self.current_piece.x -= 1
-                if not (valid_space(self.current_piece, create_grid(self.locked_positions))):
-                    self.current_piece.x += 1
-            if event.key == pygame.K_RIGHT:
-                self.current_piece.x += 1
-                if not (valid_space(self.current_piece, create_grid(self.locked_positions))):
-                    self.current_piece.x -= 1
-            if event.key == pygame.K_DOWN:
-                self.current_piece.y += 1
-                if not (valid_space(self.current_piece, create_grid(self.locked_positions))):
-                    self.current_piece.y -= 1
-            if event.key == pygame.K_UP:  # Clockwise rotation
-                self.current_piece.rotate(1, create_grid(self.locked_positions))
-            if event.key == pygame.K_RSHIFT:  # Counter-clockwise rotation
-                self.current_piece.rotate(-1, create_grid(self.locked_positions))
-            if event.key == pygame.K_RETURN:  # Hard drop
-                if hard_drop(self.current_piece, create_grid(self.locked_positions)):
-                    self.change_piece = True
-            if event.key == pygame.K_RCTRL:  # Hold
-                if self.can_hold:
-                    if self.hold_piece is None:
-                        self.hold_piece = self.current_piece
-                        self.current_block_index += 1
-                        self.block_pool.ensure_blocks_ahead(self.current_block_index)
-                        self.current_piece = get_shape_from_index(self.block_pool.get_block_at(self.current_block_index))
-                        self.next_pieces = [get_shape_from_index(idx) for idx in 
-                                          self.block_pool.get_next_blocks(self.current_block_index)]
-                    else:
-                        self.hold_piece, self.current_piece = self.current_piece, self.hold_piece
-                        self.current_piece.x, self.current_piece.y = 3, 0  # Reset position for held piece
-                    self.can_hold = False
-    
+        """Handle input by passing the key to the key handler"""
+        if event.type == pygame.KEYDOWN:
+            self.key_handler.handle_key(event.key)
+
     def update(self, fall_speed, level):
         if self.change_piece:
             shape_pos = convert_shape_format(self.current_piece)
