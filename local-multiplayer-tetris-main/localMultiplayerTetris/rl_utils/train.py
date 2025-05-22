@@ -1,8 +1,8 @@
-import torch
-import numpy as np
 import os
+import numpy as np
+import torch
 from tetris_env import TetrisEnv
-from dqn_agent import DQNAgent
+from .actor_critic import ActorCriticAgent
 
 def preprocess_state(state):
     """
@@ -28,13 +28,13 @@ def preprocess_state(state):
     
     return np.concatenate([grid, current_piece, next_piece, hold_piece])
 
-def train_dqn(env, agent, num_episodes, save_interval=100, eval_interval=50):
+def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interval=50):
     """
-    Train DQN agent on Tetris environment
+    Train Actor-Critic agent on Tetris environment
     
     Args:
         env: TetrisEnv instance
-        agent: DQNAgent instance
+        agent: ActorCriticAgent instance
         num_episodes: Number of episodes to train for
         save_interval: Save model every N episodes
         eval_interval: Evaluate agent every N episodes
@@ -63,6 +63,8 @@ def train_dqn(env, agent, num_episodes, save_interval=100, eval_interval=50):
     episode_lines = []
     episode_scores = []
     episode_max_levels = []
+    actor_losses = []
+    critic_losses = []
     
     for episode in range(num_episodes):
         state = env.reset()
@@ -73,6 +75,9 @@ def train_dqn(env, agent, num_episodes, save_interval=100, eval_interval=50):
         episode_lines_cleared = 0
         episode_score = 0
         episode_max_level = 0
+        episode_actor_loss = 0
+        episode_critic_loss = 0
+        train_steps = 0
         
         while not done:
             # Select and perform action
@@ -91,17 +96,23 @@ def train_dqn(env, agent, num_episodes, save_interval=100, eval_interval=50):
             agent.memory.push(state, action, reward, next_state, done, info)
             
             # Train agent
-            loss = agent.train()
+            losses = agent.train()
+            if losses is not None:
+                actor_loss, critic_loss = losses
+                episode_actor_loss += actor_loss
+                episode_critic_loss += critic_loss
+                train_steps += 1
             
             # Update state
             state = next_state
-            
-            # Update target network
-            if episode_length % agent.target_update == 0:
-                agent.update_target_network()
         
         # Update exploration rate
         agent.update_epsilon()
+        
+        # Calculate average losses
+        if train_steps > 0:
+            episode_actor_loss /= train_steps
+            episode_critic_loss /= train_steps
         
         # Store episode metrics
         episode_rewards.append(episode_reward)
@@ -109,6 +120,8 @@ def train_dqn(env, agent, num_episodes, save_interval=100, eval_interval=50):
         episode_lines.append(episode_lines_cleared)
         episode_scores.append(episode_score)
         episode_max_levels.append(episode_max_level)
+        actor_losses.append(episode_actor_loss)
+        critic_losses.append(episode_critic_loss)
         
         # Print episode summary
         print(f"Episode {episode + 1}/{num_episodes}")
@@ -118,13 +131,14 @@ def train_dqn(env, agent, num_episodes, save_interval=100, eval_interval=50):
         print(f"Score: {episode_score}")
         print(f"Max Level: {episode_max_level}")
         print(f"Epsilon: {agent.epsilon:.3f}")
-        if loss is not None:
-            print(f"Loss: {loss:.4f}")
+        if train_steps > 0:
+            print(f"Actor Loss: {episode_actor_loss:.4f}")
+            print(f"Critic Loss: {episode_critic_loss:.4f}")
         print()
         
         # Save model checkpoint
         if (episode + 1) % save_interval == 0:
-            agent.save(f'checkpoints/dqn_episode_{episode + 1}.pt')
+            agent.save(f'checkpoints/actor_critic_episode_{episode + 1}.pt')
         
         # Evaluate agent
         if (episode + 1) % eval_interval == 0:
@@ -133,13 +147,15 @@ def train_dqn(env, agent, num_episodes, save_interval=100, eval_interval=50):
             print()
     
     # Save final model and metrics
-    agent.save('checkpoints/dqn_final.pt')
+    agent.save('checkpoints/actor_critic_final.pt')
     np.save('logs/training_metrics.npy', {
         'rewards': episode_rewards,
         'lengths': episode_lengths,
         'lines': episode_lines,
         'scores': episode_scores,
-        'max_levels': episode_max_levels
+        'max_levels': episode_max_levels,
+        'actor_losses': actor_losses,
+        'critic_losses': critic_losses
     })
 
 def evaluate_agent(env, agent, num_episodes=10):
@@ -148,7 +164,7 @@ def evaluate_agent(env, agent, num_episodes=10):
     
     Args:
         env: TetrisEnv instance
-        agent: DQNAgent instance
+        agent: ActorCriticAgent instance
         num_episodes: Number of episodes to evaluate
     
     Returns:
@@ -166,7 +182,8 @@ def evaluate_agent(env, agent, num_episodes=10):
             # Select action without exploration
             with torch.no_grad():
                 state_tensor = torch.FloatTensor(state).unsqueeze(0).to(agent.device)
-                action = agent.policy_net(state_tensor).argmax().item()
+                action_probs, _ = agent.network(state_tensor)
+                action = action_probs.argmax().item()
             
             # Perform action
             next_state, reward, done, _ = env.step(action)
@@ -185,7 +202,7 @@ if __name__ == '__main__':
     env = TetrisEnv()
     state_dim = 248  # 20x10 grid + 3x(4x4) pieces
     action_dim = 7   # 7 possible actions
-    agent = DQNAgent(state_dim, action_dim)
+    agent = ActorCriticAgent(state_dim, action_dim)
     
     # Train agent
-    train_dqn(env, agent, num_episodes=1000) 
+    train_actor_critic(env, agent, num_episodes=1000) 

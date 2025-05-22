@@ -1,43 +1,55 @@
 # Tetris Reinforcement Learning
 
-This project implements a Deep Q-Learning (DQN) agent to play Tetris. The agent uses a combination of Convolutional Neural Networks (CNN) and Multi-Layer Perceptrons (MLP) to learn optimal strategies for playing Tetris.
+This project implements an Actor-Critic agent to play Tetris. The agent uses a combination of Convolutional Neural Networks (CNN) and Multi-Layer Perceptrons (MLP) to learn optimal strategies for playing Tetris.
 
 ## Network Design
 
-The network architecture is defined in `localMultiplayerTetris/rl_utils/dqn_agent.py` and consists of three main components:
+The network architecture is defined in `localMultiplayerTetris/rl_utils/actor_critic.py` and consists of four main components:
 
-1. **Grid Processing (CNN)**
-   - Input: 20x10 grid matrix
+1. **Shared Feature Extractor**
+   - Input: 20x10 grid matrix and piece information
    - Architecture:
-     - Conv2D(1→32, kernel=3, padding=1) + ReLU
-     - Conv2D(32→64, kernel=3, padding=1) + ReLU
-     - Conv2D(64→64, kernel=3, padding=1) + ReLU
+     - Grid Processing (CNN):
+       - Conv2D(1→32, kernel=3, padding=1) + ReLU
+       - Conv2D(32→64, kernel=3, padding=1) + ReLU
+       - Conv2D(64→64, kernel=3, padding=1) + ReLU
+     - Piece Processing (MLP):
+       - Linear(48→128) + ReLU
+       - Linear(128→128) + ReLU
 
-2. **Piece Processing (MLP)**
-   - Input: 48 features (3 pieces × 16 features each)
-   - Architecture:
-     - Linear(48→128) + ReLU
-     - Linear(128→128) + ReLU
-
-3. **Combined Network**
-   - Input: Concatenated features from CNN and MLP
+2. **Actor Network (Policy)**
+   - Input: Shared features
    - Architecture:
      - Linear(12800 + 128→512) + ReLU
      - Linear(512→256) + ReLU
-     - Linear(256→7)  # 7 possible actions
+     - Linear(256→7) + Softmax  # 7 possible actions
+   - Output: Action probabilities
+
+3. **Critic Network (Value)**
+   - Input: Shared features
+   - Architecture:
+     - Linear(12800 + 128→512) + ReLU
+     - Linear(512→256) + ReLU
+     - Linear(256→1)  # State value
+   - Output: State value estimate
+
+4. **Epsilon-Greedy Actor**
+   - Implements exploration strategy
+   - Gradually reduces exploration rate
+   - Uses actor network for action selection
 
 ## Configurable Parameters
 
-### DQN Agent Parameters (`dqn_agent.py`)
+### Actor-Critic Parameters (`actor_critic.py`)
 ```python
 # Network Parameters
-learning_rate = 1e-4      # Learning rate for optimizer
+actor_lr = 1e-4          # Learning rate for actor
+critic_lr = 1e-3         # Learning rate for critic
 gamma = 0.99             # Discount factor for future rewards
 epsilon = 1.0            # Initial exploration rate
 epsilon_min = 0.01       # Minimum exploration rate
 epsilon_decay = 0.995    # Decay rate for exploration
 batch_size = 64          # Batch size for training
-target_update = 10       # Frequency of target network updates
 gradient_clip = 1.0      # Maximum gradient norm
 ```
 
@@ -101,7 +113,7 @@ python -m localMultiplayerTetris.rl_utils.train
 ```
 localMultiplayerTetris/
 ├── rl_utils/
-│   ├── dqn_agent.py     # DQN network and agent implementation
+│   ├── actor_critic.py  # Actor-Critic network implementation
 │   ├── replay_buffer.py # Prioritized experience replay buffer
 │   └── train.py         # Training script
 ├── tetris_env.py        # Tetris environment implementation
@@ -123,10 +135,11 @@ tensorboard --logdir=logs
 
 ## Customization
 
-1. **Network Architecture**: Modify the `DQN` class in `dqn_agent.py` to change the network structure.
+1. **Network Architecture**: Modify the `ActorCritic` class in `actor_critic.py` to change the network structure.
 2. **Training Parameters**: Adjust parameters in `train.py` to modify training behavior.
 3. **Reward Structure**: Modify the reward function in `tetris_env.py` to change the learning objective.
 4. **Action Space**: Modify the action space in `tetris_env.py` to add or remove possible actions.
+5. **Exploration Strategy**: Modify the epsilon-greedy actor in `actor_critic.py` to implement different exploration strategies.
 
 ## Contributing
 
