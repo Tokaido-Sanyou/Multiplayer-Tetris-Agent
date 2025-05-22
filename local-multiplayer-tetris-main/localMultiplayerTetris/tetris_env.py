@@ -13,11 +13,14 @@ class TetrisEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, single_player=False):
+    def __init__(self, single_player=False, headless=False):
         super(TetrisEnv, self).__init__()
-        
+
+        # account for training without GUI
+        self.headless = headless
         # Initialize pygame
-        pygame.init()
+        if !(self.headless):
+            pygame.init()
         
         # Define action space (7 possible actions)
         # 0: Move Left
@@ -40,6 +43,8 @@ class TetrisEnv(gym.Env):
         })
         
         # Initialize game components
+
+        #possibly fix here if gui-less training crashes?
         self.surface = pygame.Surface((1400, 700))
         self.game = None  # Will be initialized in reset()
         self.player = None  # Will be set in reset()
@@ -223,6 +228,8 @@ class TetrisEnv(gym.Env):
         return observation
     
     def render(self, mode='human'):
+        if self.headless:
+            return
         """Render the game state"""
         if mode == 'human':
             self.game.draw()
@@ -235,4 +242,5 @@ class TetrisEnv(gym.Env):
             self.game = None
         if self.surface is not None:
             self.surface = None
-        pygame.quit() 
+        if !(self.headless):
+            pygame.quit() 
