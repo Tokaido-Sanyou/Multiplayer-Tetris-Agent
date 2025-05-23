@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import torch
+import logging
 from ..tetris_env import TetrisEnv
 from .actor_critic import ActorCriticAgent
 from .replay_buffer import ReplayBuffer
@@ -169,12 +170,13 @@ def evaluate_agent(env, agent, num_episodes=10):
     """
     eval_rewards = []
     
-    for _ in range(num_episodes):
+    for ep in range(num_episodes):
         state = env.reset()
         state = preprocess_state(state)
         done = False
         episode_reward = 0
-        
+        i = 0
+
         while not done:
             # Select action without exploration
             with torch.no_grad():
@@ -183,14 +185,20 @@ def evaluate_agent(env, agent, num_episodes=10):
                 action = action_probs.argmax().item()
             
             # Perform action
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, info = env.step(action)
             next_state = preprocess_state(next_state)
-            
+
             # Update metrics
             episode_reward += reward
             state = next_state
+
+            if i % 10 == 0:
+                logging.info(f"Episode {ep + 1}/{num_episodes} - Step {i}")
+
+            i += 1
         
         eval_rewards.append(episode_reward)
+        logging.info(f"Episode {ep + 1}/{num_episodes} - Evaluation Reward: {episode_reward:.2f}")
     
     return np.mean(eval_rewards)
 
