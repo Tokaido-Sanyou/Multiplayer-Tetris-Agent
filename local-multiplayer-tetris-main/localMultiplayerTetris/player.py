@@ -1,7 +1,10 @@
 import pygame
-from utils import get_shape_from_index, create_grid, clear_rows, convert_shape_format
-from action_handler import ActionHandler
-from key_handler import KeyHandler
+from .utils import get_shape_from_index, create_grid, clear_rows
+from .piece_utils import convert_shape_format
+from .action_handler import ActionHandler
+from .key_handler import KeyHandler
+from .block_pool import BlockPool
+from .constants import *
 
 class Player:
     def __init__(self, block_pool, is_player_one=True):

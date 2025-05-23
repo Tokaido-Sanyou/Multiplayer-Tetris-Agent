@@ -3,9 +3,11 @@ import numpy as np
 from gym import spaces
 import pygame
 import random
-from game import Game, Piece
-from utils import create_grid, valid_space, convert_shape_format, check_lost
-from constants import shapes, shape_colors
+from .game import Game, Piece
+from .utils import create_grid, check_lost, count_holes
+from .piece_utils import valid_space, convert_shape_format
+from .constants import shapes, shape_colors, s_width, s_height
+import time
 
 class TetrisEnv(gym.Env):
     """
@@ -44,8 +46,14 @@ class TetrisEnv(gym.Env):
         
         # Initialize game components
 
-        #possibly fix here if gui-less training crashes?
-        self.surface = pygame.Surface((1400, 700))
+        # Initialize rendering surface
+        if not self.headless:
+            # Create a display window for real-time visualization
+            self.surface = pygame.display.set_mode((s_width, s_height))
+            pygame.display.set_caption("Tetris RL")
+        else:
+            # Off-screen surface for headless mode
+            self.surface = pygame.Surface((s_width, s_height))
         self.game = None  # Will be initialized in reset()
         self.player = None  # Will be set in reset()
         self.single_player = single_player
@@ -114,14 +122,12 @@ class TetrisEnv(gym.Env):
         except (ValueError, KeyError):
             pass  # If no blocks, skip height penalty
         
-        # Penalty for holes (normalized by board size)
-        try:
-            holes = self._count_holes()
-            # Normalize hole penalty (0 to 1)
-            hole_penalty = holes / 200.0  # 200 is board size (20x10)
-            reward -= hole_penalty * 100  # Scale penalty
-        except Exception:
-            pass  # If error counting holes, skip hole penalty
+        # Penalty for holes (empty cells beneath blocks)
+        grid = create_grid(self.player.locked_positions)
+        holes = count_holes(grid)
+        # Normalize hole penalty (max 200 holes)
+        hole_penalty = holes / 200.0
+        reward -= hole_penalty * 100
         
         return reward
     
@@ -174,7 +180,9 @@ class TetrisEnv(gym.Env):
         elif action == 6:  # Hold Piece
             self.player.action_handler.hold_piece()
         
-        # Update game state
+        # Advance game time (apply gravity and SRS kicks etc.)
+        self.game.update()
+        # Handle locking and line clears via player.update
         lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
         
         # Ensure single player mode is maintained
@@ -188,8 +196,8 @@ class TetrisEnv(gym.Env):
         # Calculate reward
         reward = self._get_reward(lines_cleared, game_over)
         
-        # Check if episode is done
-        done = game_over or self.episode_steps >= self.max_steps
+        # Check if episode is done only when game over
+        done = game_over
         
         # Additional info
         info = {
@@ -198,6 +206,8 @@ class TetrisEnv(gym.Env):
             'level': self.game.level,
             'episode_steps': self.episode_steps
         }
+        
+        time.sleep(0.2)  # Each environment step takes 200ms
         
         return observation, reward, done, info
     
@@ -230,11 +240,14 @@ class TetrisEnv(gym.Env):
     def render(self, mode='human'):
         if self.headless:
             return
+        # Pump Pygame events to keep the window responsive
+        pygame.event.pump()
         """Render the game state"""
         if mode == 'human':
             self.game.draw()
             pygame.display.update()
-            self.clock.tick(60)
+            # Cap frame rate to 10 FPS (100 ms per step)
+            self.clock.tick(10)
     
     def close(self):
         """Clean up resources"""
@@ -243,4 +256,4 @@ class TetrisEnv(gym.Env):
         if self.surface is not None:
             self.surface = None
         if not self.headless:
-            pygame.quit() 
+            pygame.quit()

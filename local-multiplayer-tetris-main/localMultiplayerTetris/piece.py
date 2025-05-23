@@ -1,10 +1,15 @@
-from constants import I, O, JLSTZ_WALL_KICKS, I_WALL_KICKS, shapes, shape_colors
-from utils import valid_space
+"""
+Piece class for Tetris game
+"""
+
+import pygame
+from .constants import shapes, shape_colors, I_WALL_KICKS, JLSTZ_WALL_KICKS
+from .piece_utils import valid_space, convert_shape_format
 
 class Piece:
     def __init__(self, x, y, shape):
         self.x = x
-        self.y = y
+        self.y = y  # Adjust spawn position to be off the screen
         self.shape = shape
         self.rotation = 0
         self.color = shape_colors[shapes.index(shape)]
@@ -17,9 +22,9 @@ class Piece:
         new_rotation = (self.rotation + direction) % len(self.shape)
         
         # Get the appropriate wall kick data
-        if self.shape == I:
+        if self.shape == shapes[2]:  # I piece
             wall_kicks = I_WALL_KICKS
-        elif self.shape == O:
+        elif self.shape == shapes[3]:  # O piece
             # O piece doesn't need wall kicks
             self.rotation = new_rotation
             return True
@@ -40,4 +45,4 @@ class Piece:
             self.y -= y_offset
             self.rotation = old_rotation
         
-        return False 
+        return False

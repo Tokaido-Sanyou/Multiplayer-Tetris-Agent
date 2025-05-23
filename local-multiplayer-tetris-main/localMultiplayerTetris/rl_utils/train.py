@@ -1,8 +1,9 @@
 import os
 import numpy as np
 import torch
-from tetris_env import TetrisEnv
+from ..tetris_env import TetrisEnv
 from .actor_critic import ActorCriticAgent
+from .replay_buffer import ReplayBuffer
 
 def preprocess_state(state):
     """

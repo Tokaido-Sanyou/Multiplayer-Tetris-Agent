@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import time
 from .replay_buffer import ReplayBuffer
 
 class SharedFeatureExtractor(nn.Module):
@@ -170,19 +171,25 @@ class ActorCriticAgent:
         Returns:
             Integer (0-6) representing the selected action
         """
-
+        # Throttle actor to at least 50 ms per action
+        start = time.perf_counter()
+        
         # exploration (epsilon)
         if np.random.random() < self.epsilon:
-            return np.random.randint(self.action_dim)
-
-        # exploitation(top k values?)
-        with torch.no_grad():
-            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            action_probs, _ = self.network(state)
-            top_k_ac, top_k_indices = torch.topk(action_probs, self.top_k)
-            return int(np.random.choice(top_k_indices.cpu().numpy()))
-    
-            # return action_probs.argmax().item() (uncomment for most exploitative action)
+            action = np.random.randint(self.action_dim)
+        else:
+            # exploitation(top k values)
+            with torch.no_grad():
+                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+                action_probs, _ = self.network(state_tensor)
+                top_k_ac, top_k_indices = torch.topk(action_probs, self.top_k)
+                top_k_indices = top_k_indices[0].cpu().numpy()
+                action = int(np.random.choice(top_k_indices))
+        # Ensure minimum 50 ms per call
+        elapsed = time.perf_counter() - start
+        if elapsed < 0.05:
+            time.sleep(0.05 - elapsed)
+        return action
     
     def update_epsilon(self):
         """Update exploration rate"""

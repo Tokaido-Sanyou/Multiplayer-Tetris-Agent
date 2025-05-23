@@ -1,5 +1,7 @@
 import pygame
-from constants import top_left_x, play_width, play_height, block_size, mid_x, mid_y, s_width, s_height, top_left_y
+import random
+from .constants import top_left_x, play_width, play_height, block_size, mid_x, mid_y, s_width, s_height, top_left_y, shapes
+from .piece_utils import convert_shape_format, valid_space
 
 def create_grid(locked_positions={}):
     # create a blank (black) 2-d array grid
@@ -12,48 +14,20 @@ def create_grid(locked_positions={}):
                 c = locked_positions[(j,i)]
                 grid[i][j] = c
 
+    print("Grid initialization:", grid[:5])  # Debug: Log the top 5 rows of the grid
     return grid
-
-def convert_shape_format(shape):
-    positions = []
-    format = shape.shape[shape.rotation % (len(shape.shape))]
-
-    for i,line in enumerate(format):
-        for j, column in enumerate(line):
-            if column == '0':
-                positions.append((shape.x+j,shape.y+i))
-
-    for i,pos in enumerate(positions):
-        positions[i] = (pos[0]-2,pos[1]-4)
-
-    return positions
-
-def valid_space(shape, grid):
-    accepted_pos = [(j,i) for j in range(10) for i in range(20) if grid[i][j] == (0,0,0)]
-    formatted = convert_shape_format(shape)
-
-    for pos in formatted:
-        x, y = pos
-        if x < 0 or x >= 10 or y >= 20:
-            return False
-        if y >= 0:
-            if pos not in accepted_pos:
-                if y < 20 and grid[y][x] == (128, 128, 128):
-                    return False
-                return False
-    return True
 
 def check_lost(positions):
     for pos in positions:
-        x,y = pos
-        if y < 1:
+        x, y = pos
+        # only lose if a locked block is above row 0
+        if y < 0:
             return True
     return False
 
 def get_shape_from_index(index):
-    from piece import Piece
-    from constants import shapes
-    piece = Piece(5, 0, shapes[index])
+    from .piece import Piece
+    piece = Piece(5, -1, shapes[index])  # Spawns at y = -1
     if index == 2:  # I piece
         piece.rotation = 1
     return piece
@@ -206,20 +180,15 @@ def draw_window(surface, grid_1, grid_2, current_piece_1, current_piece_2, score
             pygame.draw.rect(surface, grid_2[i][j],
                              (top_left_x + (block_size * j) + add, top_left_y + (block_size * i), block_size, block_size), 0)
 
-    # Draw current pieces
+    # Draw current pieces directly at grid positions
     if current_piece_1:
-        shape_pos = convert_shape_format(current_piece_1)
-        for pos in shape_pos:
-            x, y = pos
-            if y > -1:  # Only draw if the piece is visible
+        for x, y in convert_shape_format(current_piece_1):
+            if 0 <= x < 10 and y >= 0:
                 pygame.draw.rect(surface, current_piece_1.color,
                                (top_left_x + (block_size * x), top_left_y + (block_size * y), block_size, block_size), 0)
-
     if current_piece_2:
-        shape_pos = convert_shape_format(current_piece_2)
-        for pos in shape_pos:
-            x, y = pos
-            if y > -1:  # Only draw if the piece is visible
+        for x, y in convert_shape_format(current_piece_2):
+            if 0 <= x < 10 and y >= 0:
                 pygame.draw.rect(surface, current_piece_2.color,
                                (top_left_x + (block_size * x) + add, top_left_y + (block_size * y), block_size, block_size), 0)
 
@@ -245,4 +214,23 @@ def draw_window(surface, grid_1, grid_2, current_piece_1, current_piece_2, score
 
     draw_grid(surface,grid_1,grid_2,add=int(mid_x))
 
-    pygame.display.update() 
+    pygame.display.update()
+
+def count_holes(grid):
+    """
+    Count the number of holes in a Tetris grid.
+    A hole is defined as an empty cell below at least one filled cell in the same column.
+    grid: 2D list of color tuples
+    Returns: integer count of holes
+    """
+    holes = 0
+    width = len(grid[0])
+    height = len(grid)
+    for x in range(width):
+        block_found = False
+        for y in range(height):
+            if grid[y][x] != (0, 0, 0):
+                block_found = True
+            elif block_found and grid[y][x] == (0, 0, 0):
+                holes += 1
+    return holes

@@ -1,11 +1,15 @@
+"""
+Reinforcement Learning utilities for Tetris
+"""
+
+from .train import train_actor_critic, preprocess_state, evaluate_agent
+from .actor_critic import ActorCriticAgent
 from .replay_buffer import ReplayBuffer
-from .dqn_agent import DQN, DQNAgent
-from .train import train_dqn, preprocess_state
 
 __all__ = [
-    'ReplayBuffer',
-    'DQN',
-    'DQNAgent',
-    'train_dqn',
-    'preprocess_state'
+    'train_actor_critic',
+    'preprocess_state',
+    'evaluate_agent',
+    'ActorCriticAgent',
+    'ReplayBuffer'
 ] 
