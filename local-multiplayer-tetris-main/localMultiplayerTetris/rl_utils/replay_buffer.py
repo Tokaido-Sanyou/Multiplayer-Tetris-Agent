@@ -21,6 +21,7 @@ class ReplayBuffer:
     - 4: Rotate Counter-clockwise
     - 5: Hard Drop
     - 6: Hold Piece
+    - 7: No-op
     
     Related Files:
     - tetris_env.py: Defines action space and state structure
@@ -45,11 +46,10 @@ class ReplayBuffer:
         Add a transition to the buffer
         Args:
             state: Dictionary containing:
-                - grid: 20x10 matrix of piece colors
-                - current_piece: 4x4 matrix of current piece
-                - next_piece: 4x4 matrix of next piece
-                - hold_piece: 4x4 matrix of hold piece
-            action: Integer (0-6) representing the action taken
+                - grid: 20x10 matrix of pieces, 1 for locked piece and 2 for current piece
+                - next piece (0-7)
+                - hold piece (0-7)
+            action: Integer (0-7) representing the action taken
             reward: Float reward value
             next_state: Dictionary with same structure as state
             done: Boolean indicating episode end

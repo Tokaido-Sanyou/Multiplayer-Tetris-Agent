@@ -31,7 +31,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         eval_interval: Evaluate agent every N episodes
         visualize: Whether to render the environment during training
         checkpoint: Path to checkpoint file to load
-        no_eval: Disable evaluation during training
+        no_eval: Whether to disable evaluation during training
         verbose: Enable per-step logging
     """
     try:
@@ -202,9 +202,9 @@ if __name__ == '__main__':
     parser.add_argument('--episodes', type=int, default=1000, help='Number of episodes to train')
     parser.add_argument('--save-interval', type=int, default=100, help='Save model every N episodes')
     parser.add_argument('--eval-interval', type=int, default=50, help='Evaluate agent every N episodes')
-    parser.add_argument('--profile', action='store_true', help='Enable profiling')
     parser.add_argument('--no-eval', action='store_true', help='Disable evaluation during training')
     parser.add_argument('--verbose', action='store_true', help='Enable per-step logging')
+    parser.add_argument('--profile', action='store_true', help='Enable profiling')
     args = parser.parse_args()
 
     profiler = cProfile.Profile() if args.profile else None

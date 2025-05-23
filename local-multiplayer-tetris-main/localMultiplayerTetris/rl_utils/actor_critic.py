@@ -238,6 +238,7 @@ class ActorCriticAgent:
         
         # Calculate actor loss (policy gradient)
         action_probs = action_probs.gather(1, actions.unsqueeze(1)).squeeze()
+        action_probs = action_probs.clamp(min=1e-6, max=1.0)
         actor_loss = -(torch.log(action_probs) * advantages * weights).mean()
         
         # Calculate critic loss (value function)

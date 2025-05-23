@@ -64,7 +64,7 @@ class TetrisEnv(gym.Env):
         
         # Initialize episode tracking
         self.episode_steps = 0
-        self.max_steps = 10000  # Maximum steps per episode
+        self.max_steps = 25000  # Maximum steps per episode
         self.gravity_interval = 5  # agent steps per gravity drop
         
     def _get_observation(self):
@@ -243,9 +243,10 @@ class TetrisEnv(gym.Env):
             self.game.player2.hold_piece = None
             self.game.player2.locked_positions = {}
         
-        # Reset episode tracking
+        # Reset episode tracking and reward shaping state
         self.episode_steps = 0
         self.accum_reward = 0  # initialize accumulated reward component
+        self.prev_features = None  # clear feature-history for shaping
         
         # Get initial observation
         observation = self._get_observation()
