@@ -167,6 +167,24 @@ class TetrisEnv(gym.Env):
         piece_placed = False
         lines_cleared = 0
 
+        # Detect immediate game over if newly spawned piece overlaps locked blocks
+        if not hasattr(self, '_spawn_checked'):
+            self._spawn_checked = True
+            formatted = convert_shape_format(self.player.current_piece)
+            for x, y in formatted:
+                if y >= 0 and (x, y) in self.player.locked_positions:
+                    observation = self._get_observation()
+                    reward = self._get_reward(0, True)
+                    info = {
+                        'lines_cleared': 0,
+                        'score': self.player.score,
+                        'level': self.game.level,
+                        'episode_steps': self.episode_steps,
+                        'piece_placed': False,
+                        'spawn_collision': True
+                    }
+                    return observation, reward, True, info
+
         # Map action to game action
         if action == 0:  # Move Left
             self.player.action_handler.move_left()
@@ -247,6 +265,8 @@ class TetrisEnv(gym.Env):
         self.episode_steps = 0
         self.accum_reward = 0  # initialize accumulated reward component
         self.prev_features = None  # clear feature-history for shaping
+        # Reset spawn collision flag
+        self._spawn_checked = False
         
         # Get initial observation
         observation = self._get_observation()
