@@ -9,6 +9,7 @@ import pygame
 import cProfile
 import pstats
 import sys
+import argparse
 
 # Set up logging
 logging.basicConfig(
@@ -20,7 +21,7 @@ logging.basicConfig(
     ]
 )
 
-def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True):
+def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None):
     """
     Train an agent as player 1 in the Tetris environment
     
@@ -29,6 +30,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         save_interval: Save model every N episodes
         eval_interval: Evaluate agent every N episodes
         visualize: Whether to render the environment during training
+        checkpoint: Path to checkpoint file to load
     """
     try:
         # Create environment; show window if visualize=True
@@ -38,6 +40,12 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         state_dim = 202  # 20x10 grid + next_piece + hold_piece scalars
         action_dim = 7   # 7 possible actions
         agent = ActorCriticAgent(state_dim, action_dim)
+        if checkpoint:
+            try:
+                agent.load(checkpoint)
+                logging.info(f"Loaded checkpoint from {checkpoint}")
+            except Exception as e:
+                logging.error(f"Error loading checkpoint: {e}")
         
         # Create directories for saving
         os.makedirs('checkpoints', exist_ok=True)
@@ -53,6 +61,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         critic_losses = []
         
         for episode in range(num_episodes):
+            episode_pieces_placed = 0
             try:
                 # Initialize observation and state
                 obs = env.reset()
@@ -84,6 +93,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                         episode_lines_cleared += info.get('lines_cleared', 0)
                         episode_score += info.get('score', 0)
                         episode_max_level = max(episode_max_level, info.get('level', 0))
+                        episode_pieces_placed += int(info.get('piece_placed', False))
                         
                         # Store transition in replay buffer (use raw observation dict)
                         agent.memory.push(obs, action, reward, next_obs, done, info)
@@ -132,6 +142,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                 logging.info(f"Length: {episode_length}")
                 logging.info(f"Lines Cleared: {episode_lines_cleared}")
                 logging.info(f"Score: {episode_score}")
+                logging.info(f"Pieces Placed: {episode_pieces_placed}")
                 logging.info(f"Max Level: {episode_max_level}")
                 logging.info(f"Epsilon: {agent.epsilon:.3f}")
                 if train_steps > 0:
@@ -182,13 +193,30 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         env.close()
 
 if __name__ == '__main__':
-    profiler = cProfile.Profile()
-    profiler.enable()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--visualize', action='store_true', help='Enable GUI visualization')
+    parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint file to load')
+    parser.add_argument('--episodes', type=int, default=1000, help='Number of episodes to train')
+    parser.add_argument('--save-interval', type=int, default=100, help='Save model every N episodes')
+    parser.add_argument('--eval-interval', type=int, default=50, help='Evaluate agent every N episodes')
+    parser.add_argument('--profile', action='store_true', help='Enable profiling')
+    args = parser.parse_args()
+
+    profiler = cProfile.Profile() if args.profile else None
+    if profiler:
+        profiler.enable()
     try:
-        train_single_player(visualize=False)
+        train_single_player(
+            num_episodes=args.episodes,
+            save_interval=args.save_interval,
+            eval_interval=args.eval_interval,
+            visualize=args.visualize,
+            checkpoint=args.checkpoint
+        )
     except KeyboardInterrupt:
         print("Training interrupted by user")
     finally:
-        profiler.disable()
-        ps = pstats.Stats(profiler, stream=sys.stdout).strip_dirs().sort_stats('cumtime')
-        ps.print_stats(20)
+        if profiler:
+            profiler.disable()
+            ps = pstats.Stats(profiler, stream=sys.stdout).strip_dirs().sort_stats('cumtime')
+            ps.print_stats(20)

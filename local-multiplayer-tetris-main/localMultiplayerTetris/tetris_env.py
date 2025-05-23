@@ -32,8 +32,8 @@ class TetrisEnv(gym.Env):
         # 4: Rotate Counter-clockwise
         # 5: Hard Drop
         # 6: Hold Piece
-        # 8: No-op
-        self.action_space = spaces.Discrete(9)
+        # 7: No-op
+        self.action_space = spaces.Discrete(8)
         
         # Define observation space
         # Grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
@@ -94,44 +94,43 @@ class TetrisEnv(gym.Env):
         }
     
     def _get_reward(self, lines_cleared, game_over):
-        """Calculate reward based on game state"""
-        reward = 0
-        
-        # Reward for clearing lines (scaled by level)
-        if lines_cleared == 1:
-            reward += 100 * self.game.level
-        elif lines_cleared == 2:
-            reward += 300 * self.game.level
-        elif lines_cleared == 3:
-            reward += 500 * self.game.level
-        elif lines_cleared == 4:  # Tetris
-            reward += 800 * self.game.level
-        
-        # Penalty for game over
+        # 1. Line-clear + time penalty
+        bases = {1:40, 2:100, 3:300, 4:1200}
+        reward = bases.get(lines_cleared, 0) * (self.game.level + 1)
+        reward += -0.1   # small time penalty
+
+        # 2. Game-over check
         if game_over:
-            reward -= 1000
-        
-        # Small penalty for each step to encourage faster play
-        reward -= 1
-        
-        # Penalty for high stack height (normalized by board height)
-        try:
-            if self.player.locked_positions:
-                max_height = max([y for x, y in self.player.locked_positions.keys()])
-                # Normalize height penalty (0 to 1)
-                height_penalty = max_height / 20.0  # 20 is board height
-                reward -= height_penalty * 50  # Scale penalty
-        except (ValueError, KeyError):
-            pass  # If no blocks, skip height penalty
-        
-        # Penalty for holes (empty cells beneath blocks)
+            return reward - 200
+
+        # 3. Compute features
         grid = create_grid(self.player.locked_positions)
-        holes = count_holes(grid)
-        # Normalize hole penalty (max 200 holes)
-        hole_penalty = holes / 200.0
-        reward -= hole_penalty * 100
-        
+        col_heights = [  # from bottom (row 19) up
+        next((r for r in range(20) if grid[r][c]!=(0,0,0)), 20)
+        for c in range(10)
+        ]
+        curr = {
+        "holes": sum(
+            1 for c in range(10)
+            for r in range(col_heights[c]+1, 20)
+            if grid[r][c]==(0,0,0)
+        ),
+        "agg_h": sum(col_heights),
+        "bump": sum(abs(col_heights[i]-col_heights[i+1]) for i in range(9)),
+        }
+
+        # 4. Delta-based shaping
+        prev = self.prev_features if hasattr(self, 'prev_features') else None
+        if prev:
+            reward += 4.0 * (prev["holes"]   - curr["holes"])
+            reward += 0.5 * (prev["agg_h"]   - curr["agg_h"])
+            reward += 1.0 * (prev["bump"]    - curr["bump"])
+
+        # 5. Store for next step
+        self.prev_features = curr
+
         return reward
+
     
     def _count_holes(self):
         """Count number of holes in the grid"""
@@ -165,6 +164,7 @@ class TetrisEnv(gym.Env):
     def step(self, action):
         """Execute one time step within the environment"""
         self.episode_steps += 1
+        piece_placed = False
         lines_cleared = 0
 
         # Map action to game action
@@ -182,9 +182,10 @@ class TetrisEnv(gym.Env):
             self.player.action_handler.hard_drop()
             # Immediately lock piece to avoid extra gravity
             lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
+            piece_placed = True
         elif action == 6:  # Hold Piece
             self.player.action_handler.hold_piece()
-        elif action == 8:  # No-op action
+        elif action == 7:  # No-op action
             pass
 
         # Gravity: drop every gravity_interval agent steps (skip after hard drop)
@@ -195,6 +196,7 @@ class TetrisEnv(gym.Env):
             else:
                 # lock piece and clear lines
                 lines_cleared += self.player.update(self.game.fall_speed, self.game.level)
+                piece_placed = True
         
         # Ensure single player mode is maintained
         self._ensure_single_player_mode()
@@ -215,7 +217,8 @@ class TetrisEnv(gym.Env):
             'lines_cleared': lines_cleared,
             'score': self.player.score,
             'level': self.game.level,
-            'episode_steps': self.episode_steps
+            'episode_steps': self.episode_steps,
+            'piece_placed': piece_placed
         }
         
         #time.sleep(0.05)  # Each environment step takes 200ms
@@ -242,6 +245,7 @@ class TetrisEnv(gym.Env):
         
         # Reset episode tracking
         self.episode_steps = 0
+        self.accum_reward = 0  # initialize accumulated reward component
         
         # Get initial observation
         observation = self._get_observation()
