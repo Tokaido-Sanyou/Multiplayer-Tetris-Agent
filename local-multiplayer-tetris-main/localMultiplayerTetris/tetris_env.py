@@ -64,7 +64,7 @@ class TetrisEnv(gym.Env):
         
         # Initialize episode tracking
         self.episode_steps = 0
-        self.max_steps = 1000  # Maximum steps per episode
+        self.max_steps = 10000  # Maximum steps per episode
         self.gravity_interval = 5  # agent steps per gravity drop
         
     def _get_observation(self):
@@ -209,8 +209,8 @@ class TetrisEnv(gym.Env):
         # Calculate reward
         reward = self._get_reward(lines_cleared, game_over)
         
-        # Check if episode is done only when game over
-        done = game_over
+        # Check if episode is done on game over or max steps reached
+        done = game_over or (self.episode_steps >= self.max_steps)
         
         # Additional info
         info = {

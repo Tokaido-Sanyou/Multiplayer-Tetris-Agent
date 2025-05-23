@@ -177,7 +177,7 @@ def evaluate_agent(env, agent, num_episodes=10):
         episode_reward = 0
         i = 0
 
-        while not done:
+        while not done and i < env.max_steps:
             # Select action without exploration
             with torch.no_grad():
                 state_tensor = torch.FloatTensor(state).unsqueeze(0).to(agent.device)

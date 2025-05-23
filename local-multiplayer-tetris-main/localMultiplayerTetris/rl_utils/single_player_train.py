@@ -21,7 +21,7 @@ logging.basicConfig(
     ]
 )
 
-def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None):
+def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False):
     """
     Train an agent as player 1 in the Tetris environment
     
@@ -31,6 +31,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         eval_interval: Evaluate agent every N episodes
         visualize: Whether to render the environment during training
         checkpoint: Path to checkpoint file to load
+        no_eval: Disable evaluation during training
     """
     try:
         # Create environment; show window if visualize=True
@@ -159,7 +160,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                         logging.error(f"Error saving checkpoint: {str(e)}")
                 
                 # Evaluate agent
-                if (episode + 1) % eval_interval == 0:
+                if not no_eval and (episode + 1) % eval_interval == 0:
                     try:
                         eval_reward = evaluate_agent(env, agent)
                         logging.info(f"Evaluation Reward: {eval_reward:.2f}")
@@ -200,6 +201,7 @@ if __name__ == '__main__':
     parser.add_argument('--save-interval', type=int, default=100, help='Save model every N episodes')
     parser.add_argument('--eval-interval', type=int, default=50, help='Evaluate agent every N episodes')
     parser.add_argument('--profile', action='store_true', help='Enable profiling')
+    parser.add_argument('--no-eval', action='store_true', help='Disable evaluation during training')
     args = parser.parse_args()
 
     profiler = cProfile.Profile() if args.profile else None
@@ -211,7 +213,8 @@ if __name__ == '__main__':
             save_interval=args.save_interval,
             eval_interval=args.eval_interval,
             visualize=args.visualize,
-            checkpoint=args.checkpoint
+            checkpoint=args.checkpoint,
+            no_eval=args.no_eval
         )
     except KeyboardInterrupt:
         print("Training interrupted by user")
