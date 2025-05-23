@@ -163,7 +163,8 @@ class TetrisEnv(gym.Env):
     def step(self, action):
         """Execute one time step within the environment"""
         self.episode_steps += 1
-        
+        lines_cleared = 0
+
         # Map action to game action
         if action == 0:  # Move Left
             self.player.action_handler.move_left()
@@ -177,13 +178,17 @@ class TetrisEnv(gym.Env):
             self.player.action_handler.rotate_ccw()
         elif action == 5:  # Hard Drop
             self.player.action_handler.hard_drop()
+            # Immediately lock piece to avoid extra gravity
+            lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
         elif action == 6:  # Hold Piece
             self.player.action_handler.hold_piece()
-        
+
         # Advance game time (apply gravity and SRS kicks etc.)
         self.game.update()
-        # Handle locking and line clears via player.update
-        lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
+
+        # For non-hard-drop actions, handle locking and line clears
+        if action != 5:
+            lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
         
         # Ensure single player mode is maintained
         self._ensure_single_player_mode()
@@ -207,7 +212,7 @@ class TetrisEnv(gym.Env):
             'episode_steps': self.episode_steps
         }
         
-        time.sleep(0.2)  # Each environment step takes 200ms
+        time.sleep(0.05)  # Each environment step takes 200ms
         
         return observation, reward, done, info
     

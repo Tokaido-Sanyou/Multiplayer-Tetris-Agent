@@ -4,9 +4,9 @@ Utility functions for Tetris pieces
 
 def valid_space(shape, grid):
     accepted_pos = [(j,i) for j in range(10) for i in range(20) if grid[i][j] == (0,0,0)]
-    print("Accepted positions:", accepted_pos)  # Debug: Log accepted positions
+    # print("Accepted positions:", accepted_pos)  # Debug: Log accepted positions
     formatted = convert_shape_format(shape)
-    print("Formatted positions:", formatted)  # Debug: Log formatted positions
+    # print("Formatted positions:", formatted)  # Debug: Log formatted positions
 
     for pos in formatted:
         x, y = pos

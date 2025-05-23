@@ -14,7 +14,7 @@ def create_grid(locked_positions={}):
                 c = locked_positions[(j,i)]
                 grid[i][j] = c
 
-    print("Grid initialization:", grid[:5])  # Debug: Log the top 5 rows of the grid
+    #print("Grid initialization:", grid[:5])  # Debug: Log the top 5 rows of the grid
     return grid
 
 def check_lost(positions):

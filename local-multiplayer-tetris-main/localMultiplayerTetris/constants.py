@@ -35,7 +35,7 @@ ORANGE = (255, 165, 0)
 
 # Game settings
 FPS = 60
-FALL_SPEED = 1.0  # Set natural fall interval to 1 second
+FALL_SPEED = 0.2  # Set natural fall interval to 1 second
 INITIAL_LEVEL = 1
 LEVEL_UP_INTERVAL = 15  # seconds
 
