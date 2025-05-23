@@ -5,6 +5,10 @@ import logging
 from ..tetris_env import TetrisEnv
 from .actor_critic import ActorCriticAgent
 from .train import preprocess_state, evaluate_agent
+import pygame
+import cProfile
+import pstats
+import sys
 
 # Set up logging
 logging.basicConfig(
@@ -16,7 +20,7 @@ logging.basicConfig(
     ]
 )
 
-def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50):
+def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True):
     """
     Train an agent as player 1 in the Tetris environment
     
@@ -24,10 +28,11 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50):
         num_episodes: Number of episodes to train for
         save_interval: Save model every N episodes
         eval_interval: Evaluate agent every N episodes
+        visualize: Whether to render the environment during training
     """
     try:
-        # Create environment with single player mode enabled
-        env = TetrisEnv(single_player=True)
+        # Create environment; show window if visualize=True
+        env = TetrisEnv(single_player=True, headless=not visualize)
         
         # Create agent
         state_dim = 202  # 20x10 grid + next_piece + hold_piece scalars
@@ -49,8 +54,9 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50):
         
         for episode in range(num_episodes):
             try:
-                state = env.reset()
-                state = preprocess_state(state)
+                # Initialize observation and state
+                obs = env.reset()
+                state = preprocess_state(obs)
                 done = False
                 episode_reward = 0
                 episode_length = 0
@@ -65,8 +71,12 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50):
                     try:
                         # Select and perform action
                         action = agent.select_action(state)
-                        next_state, reward, done, info = env.step(action)
-                        next_state = preprocess_state(next_state)
+                        next_obs, reward, done, info = env.step(action)
+                        next_state = preprocess_state(next_obs)
+                        
+                        # Render if visualization enabled
+                        if visualize:
+                            env.render()
                         
                         # Update metrics
                         episode_reward += reward
@@ -75,8 +85,8 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50):
                         episode_score += info.get('score', 0)
                         episode_max_level = max(episode_max_level, info.get('level', 0))
                         
-                        # Store transition in replay buffer
-                        agent.memory.push(state, action, reward, next_state, done, info)
+                        # Store transition in replay buffer (use raw observation dict)
+                        agent.memory.push(obs, action, reward, next_obs, done, info)
                         
                         # Train agent
                         losses = agent.train()
@@ -86,8 +96,14 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50):
                             episode_critic_loss += critic_loss
                             train_steps += 1
                         
-                        # Update state
+                        # Update state and observation
                         state = next_state
+                        obs = next_obs
+                        
+                        # Log episode details
+                        logging.info(f"Action taken: {action}")
+                        logging.info(f"Reward received: {reward}")
+                        logging.info(f"Game state: {info}")
                         
                     except Exception as e:
                         logging.error(f"Error during episode {episode + 1} step: {str(e)}")
@@ -166,4 +182,13 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50):
         env.close()
 
 if __name__ == '__main__':
-    train_single_player() 
+    profiler = cProfile.Profile()
+    profiler.enable()
+    try:
+        train_single_player(visualize=False)
+    except KeyboardInterrupt:
+        print("Training interrupted by user")
+    finally:
+        profiler.disable()
+        ps = pstats.Stats(profiler, stream=sys.stdout).strip_dirs().sort_stats('cumtime')
+        ps.print_stats(20)

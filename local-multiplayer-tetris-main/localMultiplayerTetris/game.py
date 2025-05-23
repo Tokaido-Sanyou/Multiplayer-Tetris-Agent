@@ -1,10 +1,14 @@
 import pygame
 import random
 import collections
-from constants import *
-from block_pool import BlockPool
-from player import Player
-from utils import create_grid, check_lost, draw_window, draw_next_pieces, draw_hold_piece, add_garbage_line, convert_shape_format, valid_space, hard_drop, get_shape_from_index
+import os
+from .constants import *
+from .block_pool import BlockPool
+from .player import Player
+from .utils import create_grid, check_lost, draw_window, draw_next_pieces, draw_hold_piece, add_garbage_line, hard_drop, get_shape_from_index
+from .piece_utils import valid_space, convert_shape_format
+from .piece import Piece
+from .action_handler import ActionHandler
 
 """
 10 x 20 square grid
@@ -13,6 +17,7 @@ represented in order by 0 - 6
 """
 
 pygame.init()
+clock = pygame.time.Clock()
 
 # global vars
 # screen(window) width and height
@@ -326,7 +331,7 @@ def info_page(surface):
         surface.fill((0,0,0))
         pygame.draw.line(surface, (255, 255, 255), (s_width / 2, 75), (s_width / 2, s_height-40))
         pygame.draw.line(surface, (255, 255, 255), (0, 75), (s_width, 75))
-        pygame.draw.line(surface, (255, 255, 255), (0, s_height-40), (s_width, s_height-40))
+        pygame.draw.line(surface, (255, 255, 255), (0, s_height), (s_width, s_height-40))
         
         # Use smaller fonts
         title_font = pygame.font.SysFont('Consolas', 40, bold=True,italic=True)
@@ -481,13 +486,14 @@ def add_garbage_line(locked_positions, num_lines=1):
     locked_positions.update(new_positions)
 
 class Game:
-    def __init__(self, surface):
+    def __init__(self, surface, auto_start=False):
         self.surface = surface
         self.clock = pygame.time.Clock()
         self.fall_time = 0
         self.level_time = 0
         self.level = 1
-        self.fall_speed = 0.27
+        self.fall_speed = 0.5  # natural fall interval now 500 ms (0.5 s)
+        self.auto_start = auto_start  # New flag to control auto-start behavior
         
         self.block_pool = BlockPool()
         
@@ -496,6 +502,10 @@ class Game:
         
         self.p1_grid = create_grid(self.player1.locked_positions)
         self.p2_grid = create_grid(self.player2.locked_positions)
+        # For incremental rendering of falling pieces
+        self.prev_shape_pos_1 = []
+        self.prev_shape_pos_2 = []
+        self.first_draw = True
     
     def handle_input(self, event):
         if event.type == pygame.QUIT:
@@ -521,22 +531,28 @@ class Game:
         
         if self.fall_time/1000 >= self.fall_speed:
             self.fall_time = 0
+            # Move player1 piece down
             self.player1.current_piece.y += 1
-            self.player2.current_piece.y += 1
-            
-            if not(valid_space(self.player1.current_piece, self.p1_grid)) and self.player1.current_piece.y > 0:
-                self.player1.current_piece.y -= 1
-                self.player1.change_piece = True
-
-            if not(valid_space(self.player2.current_piece, self.p2_grid)) and self.player2.current_piece.y > 0:
-                self.player2.current_piece.y -= 1
-                self.player2.change_piece = True
+            # Move player2 piece down if present
+            if self.player2.current_piece is not None:
+                self.player2.current_piece.y += 1
         
         self.update_player(self.player1, self.player2)
         self.update_player(self.player2, self.player1)
         
         self.p1_grid = create_grid(self.player1.locked_positions)
         self.p2_grid = create_grid(self.player2.locked_positions)
+        
+        # Collision for player1
+        if not valid_space(self.player1.current_piece, self.p1_grid) and self.player1.current_piece.y > 0:
+            self.player1.current_piece.y -= 1
+            self.player1.change_piece = True
+        
+        # Collision for player2, if present
+        if self.player2.current_piece is not None:
+            if not valid_space(self.player2.current_piece, self.p2_grid) and self.player2.current_piece.y > 0:
+                self.player2.current_piece.y -= 1
+                self.player2.change_piece = True
         
         if check_lost(self.player1.locked_positions) or check_lost(self.player2.locked_positions):
             return False
@@ -562,47 +578,62 @@ class Game:
         return 0
     
     def draw(self):
+        # Full redraw of grid and UI each frame for proper piece movement
         self.surface.fill((33,29,29))
-        
-        draw_window(self.surface, self.p1_grid, self.p2_grid, 
-                   self.player1.current_piece, self.player2.current_piece,
-                   self.player1.score, self.player2.score, 
-                   self.level, self.fall_speed, add=int(mid_x))
-        
+        draw_window(self.surface, self.p1_grid, self.p2_grid,
+                    self.player1.current_piece, self.player2.current_piece,
+                    self.player1.score, self.player2.score,
+                    self.level, self.fall_speed, add=int(mid_x))
         draw_next_pieces(self.player1.next_pieces, self.surface, 0)
         draw_next_pieces(self.player2.next_pieces, self.surface, 1)
-        
         draw_hold_piece(self.player1.hold_piece, self.surface, 0)
         draw_hold_piece(self.player2.hold_piece, self.surface, 1)
-        
         pygame.display.update()
 
-def main(surface):
-    game = Game(surface)
-    run = True
-    
-    while run:
-        for event in pygame.event.get():
-            run = game.handle_input(event)
-        
-        run = game.update()
-        game.draw()
+    def start(self):
+        """Start the game loop only if auto_start is True"""
+        if self.auto_start:
+            run = True
+            while run:
+                for event in pygame.event.get():
+                    run = self.handle_input(event)
+                run = self.update()
+                self.draw()
+
+def main(win):
+    """
+    Instantiate Game with auto_start=True and launch the main loop.
+    """
+    game = Game(win, auto_start=True)
+    game.start()
 
 def main_menu():
     run = True
+    # Load background image once
+    if os.path.exists('bgp.jpg'):
+        try:
+            background = pygame.image.load('bgp.jpg')
+        except Exception as e:
+            print(f'Error loading background image: {e}')
+            background = None
+    else:
+        print('Warning: bgp.jpg not found, background will not be loaded.')
+        background = None
     while run:
         win.fill((255, 178, 102))
-        win.blit(background,(0,-70))
-        font = pygame.font.SysFont('Consolas', 40,bold=True,italic=True)
+        if background:
+            win.blit(background, (0, -70))
+        font = pygame.font.SysFont('Consolas', 40, bold=True, italic=True)
         label = font.render('T E T R I S', True, (255, 255, 255))
-        win.blit(label,(mid_x - label.get_width()/2, mid_y - label.get_height()/2 - 250))
-        draw_text_bottom("PRESS ANY KEY TO START THE GAME",40,(255,255,255),win)
+        win.blit(label, (mid_x - label.get_width() / 2, mid_y - label.get_height() / 2 - 250))
+        draw_text_bottom("PRESS ANY KEY TO START THE GAME", 40, (255, 255, 255), win)
 
         small_font = pygame.font.SysFont('Consolas', 20, bold=True, italic=True)
         small_label = small_font.render('( PRESS I FOR INFO )', True, (255, 255, 255))
-        win.blit(small_label,(mid_x - small_label.get_width()/2,mid_y + small_label.get_height()/2 + 310))
+        win.blit(small_label, (mid_x - small_label.get_width() / 2, mid_y + small_label.get_height() / 2 + 310))
 
         pygame.display.update()
+        clock.tick(10)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -611,17 +642,17 @@ def main_menu():
                 if event.key == pygame.K_i:
                     info_page(win)
                 else:
-                    win.fill((0,0,0))
-                    wait_font = pygame.font.SysFont('Consolas', 40,bold=True,italic=True)
+                    win.fill((0, 0, 0))
+                    wait_font = pygame.font.SysFont('Consolas', 40, bold=True, italic=True)
                     wait_text = wait_font.render('STARTING GAME......', True, (255, 255, 255))
-                    win.blit(wait_text,(mid_x-wait_text.get_width()/2,mid_y))
+                    win.blit(wait_text, (mid_x - wait_text.get_width() / 2, mid_y))
                     pygame.display.update()
                     pygame.time.delay(1500)
                     main(win)
 
     pygame.display.quit()
 
-win = pygame.display.set_mode((s_width,s_height))
-pygame.display.set_caption("Tetris Game")
-background = pygame.image.load('bgp.jpg')
-main_menu()
+if __name__ == '__main__':
+    win = pygame.display.set_mode((s_width,s_height))
+    pygame.display.set_caption("Tetris Game")
+    main_menu()

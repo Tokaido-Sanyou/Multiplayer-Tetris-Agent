@@ -453,7 +453,7 @@ def convert_shape_format(shape):
 
     # to offset(cancel off)/adjust the position displayed
     for i,pos in enumerate(positions):
-        positions[i] = (pos[0]-2,pos[1]-4)
+        positions[i] = (pos[0], pos[1])  # Removed offset adjustment
 
     return positions
 

@@ -1,21 +1,43 @@
+"""
+Constants for the Tetris game
+"""
+
 import pygame
 
 # Screen dimensions
 s_width = 1400
 s_height = 700
 
-# Play section dimensions
+# Play area dimensions
 play_width = 300  # meaning 300 // 10 = 30 width per block
 play_height = 600  # meaning 600 // 20 = 20 height per block
 block_size = 30
 
-# Coordinates for play section
+# Coordinates for play area
 top_left_x = (s_width/2 - play_width) // 2
 top_left_y = s_height - play_height
 
 # Middle coordinates
 mid_x = (s_width/2)
 mid_y = (s_height/2)
+
+# Colors
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+GRAY = (128, 128, 128)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+CYAN = (0, 255, 255)
+MAGENTA = (255, 0, 255)
+YELLOW = (255, 255, 0)
+ORANGE = (255, 165, 0)
+
+# Game settings
+FPS = 60
+FALL_SPEED = 0.2  # Set natural fall interval to 1 second
+INITIAL_LEVEL = 1
+LEVEL_UP_INTERVAL = 15  # seconds
 
 # Shape formats (SRS spawn states)
 S = [['.....',
@@ -121,44 +143,57 @@ T = [['.....',
       '.....']]
 
 # Wall kick data for SRS
+# Format: [current_rotation][target_rotation] = [(x, y) offsets]
+# For J, L, S, T, Z pieces
 JLSTZ_WALL_KICKS = {
+    # 0 -> R
     0: {
         1: [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
-        3: [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)]
+        3: [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)]  # 0 -> L
     },
+    # R -> 2 or 0
     1: {
         2: [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
-        0: [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)]
+        0: [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)]  # R -> 0
     },
+    # 2 -> L or R
     2: {
         3: [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
-        1: [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)]
+        1: [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)]  # 2 -> R
     },
+    # L -> 0 or 2
     3: {
         0: [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
-        2: [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)]
+        2: [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)]  # L -> 2
     }
 }
 
+# For I piece
 I_WALL_KICKS = {
+    # 0 -> R or L
     0: {
         1: [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
-        3: [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)]
+        3: [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)]  # 0 -> L
     },
+    # R -> 2 or 0
     1: {
         2: [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)],
-        0: [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)]
+        0: [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)]  # R -> 0
     },
+    # 2 -> L or R
     2: {
         3: [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)],
-        1: [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)]
+        1: [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)]  # 2 -> R
     },
+    # L -> 0 or 2
     3: {
         0: [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)],
-        2: [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)]
+        2: [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)]  # L -> 2
     }
 }
 
-# Shape and color lists
+# List of all shapes
 shapes = [S, Z, I, O, J, L, T]
-shape_colors = [(0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 255, 0), (255, 165, 0), (0, 0, 255), (230,230,250)] 
+
+# Colors for each shape
+shape_colors = [(0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 255, 0), (255, 165, 0), (0, 0, 255), (230,230,250)]
