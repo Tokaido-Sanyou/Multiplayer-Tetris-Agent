@@ -21,7 +21,7 @@ logging.basicConfig(
     ]
 )
 
-def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False):
+def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False):
     """
     Train an agent as player 1 in the Tetris environment
     
@@ -32,6 +32,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         visualize: Whether to render the environment during training
         checkpoint: Path to checkpoint file to load
         no_eval: Disable evaluation during training
+        verbose: Enable per-step logging
     """
     try:
         # Create environment; show window if visualize=True
@@ -112,9 +113,10 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                         obs = next_obs
                         
                         # Log episode details
-                        logging.info(f"Action taken: {action}")
-                        logging.info(f"Reward received: {reward}")
-                        logging.info(f"Game state: {info}")
+                        if verbose:
+                            logging.info(f"Action taken: {action}")
+                            logging.info(f"Reward received: {reward}")
+                            logging.info(f"Game state: {info}")
                         
                     except Exception as e:
                         logging.error(f"Error during episode {episode + 1} step: {str(e)}")
@@ -202,6 +204,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval-interval', type=int, default=50, help='Evaluate agent every N episodes')
     parser.add_argument('--profile', action='store_true', help='Enable profiling')
     parser.add_argument('--no-eval', action='store_true', help='Disable evaluation during training')
+    parser.add_argument('--verbose', action='store_true', help='Enable per-step logging')
     args = parser.parse_args()
 
     profiler = cProfile.Profile() if args.profile else None
@@ -214,7 +217,8 @@ if __name__ == '__main__':
             eval_interval=args.eval_interval,
             visualize=args.visualize,
             checkpoint=args.checkpoint,
-            no_eval=args.no_eval
+            no_eval=args.no_eval,
+            verbose=args.verbose
         )
     except KeyboardInterrupt:
         print("Training interrupted by user")
