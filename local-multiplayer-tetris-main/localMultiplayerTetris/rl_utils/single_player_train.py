@@ -6,6 +6,9 @@ from ..tetris_env import TetrisEnv
 from .actor_critic import ActorCriticAgent
 from .train import preprocess_state, evaluate_agent
 import pygame
+import cProfile
+import pstats
+import sys
 
 # Set up logging
 logging.basicConfig(
@@ -179,4 +182,13 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         env.close()
 
 if __name__ == '__main__':
-    train_single_player() 
+    profiler = cProfile.Profile()
+    profiler.enable()
+    try:
+        train_single_player(visualize=False)
+    except KeyboardInterrupt:
+        print("Training interrupted by user")
+    finally:
+        profiler.disable()
+        ps = pstats.Stats(profiler, stream=sys.stdout).strip_dirs().sort_stats('cumtime')
+        ps.print_stats(20)

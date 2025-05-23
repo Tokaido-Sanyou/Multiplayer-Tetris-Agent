@@ -24,7 +24,7 @@ class TetrisEnv(gym.Env):
         if not self.headless:
             pygame.init()
         
-        # Define action space (7 possible actions)
+        # Action space:
         # 0: Move Left
         # 1: Move Right
         # 2: Move Down
@@ -32,7 +32,8 @@ class TetrisEnv(gym.Env):
         # 4: Rotate Counter-clockwise
         # 5: Hard Drop
         # 6: Hold Piece
-        self.action_space = spaces.Discrete(7)
+        # 8: No-op
+        self.action_space = spaces.Discrete(9)
         
         # Define observation space
         # Grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
@@ -64,6 +65,7 @@ class TetrisEnv(gym.Env):
         # Initialize episode tracking
         self.episode_steps = 0
         self.max_steps = 1000  # Maximum steps per episode
+        self.gravity_interval = 5  # agent steps per gravity drop
         
     def _get_observation(self):
         """Convert game state to observation space format"""
@@ -182,13 +184,17 @@ class TetrisEnv(gym.Env):
             lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
         elif action == 6:  # Hold Piece
             self.player.action_handler.hold_piece()
+        elif action == 8:  # No-op action
+            pass
 
-        # Advance game time (apply gravity and SRS kicks etc.)
-        self.game.update()
-
-        # For non-hard-drop actions, handle locking and line clears
-        if action != 5:
-            lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
+        # Gravity: drop every gravity_interval agent steps (skip after hard drop)
+        if action != 5 and self.episode_steps % self.gravity_interval == 0:
+            # attempt move down
+            if valid_space(self.player.current_piece, create_grid(self.player.locked_positions)):
+                self.player.current_piece.y += 1
+            else:
+                # lock piece and clear lines
+                lines_cleared += self.player.update(self.game.fall_speed, self.game.level)
         
         # Ensure single player mode is maintained
         self._ensure_single_player_mode()
@@ -212,7 +218,7 @@ class TetrisEnv(gym.Env):
             'episode_steps': self.episode_steps
         }
         
-        time.sleep(0.05)  # Each environment step takes 200ms
+        #time.sleep(0.05)  # Each environment step takes 200ms
         
         return observation, reward, done, info
     
@@ -247,6 +253,9 @@ class TetrisEnv(gym.Env):
             return
         # Pump Pygame events to keep the window responsive
         pygame.event.pump()
+        # Sync locked blocks into the game grid before drawing
+        self.game.p1_grid = create_grid(self.player.locked_positions)
+        self.game.p2_grid = create_grid(self.game.player2.locked_positions)
         """Render the game state"""
         if mode == 'human':
             self.game.draw()

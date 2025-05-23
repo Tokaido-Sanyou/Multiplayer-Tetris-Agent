@@ -70,13 +70,14 @@ class ActorCritic(nn.Module):
     - 4: Rotate Counter-clockwise
     - 5: Hard Drop
     - 6: Hold Piece
+    - 8: No-op
     """
     def __init__(self, input_dim, output_dim):
         """
         Initialize Actor-Critic network
         Args:
             input_dim: Dimension of input state (202)
-            output_dim: Number of possible actions (7)
+            output_dim: Number of possible actions (9)
         """
         super(ActorCritic, self).__init__()
         
@@ -125,7 +126,7 @@ class ActorCriticAgent:
         Initialize Actor-Critic agent
         Args:
             state_dim: Dimension of state space (202)
-            action_dim: Number of possible actions (7)
+            action_dim: Number of possible actions (9)
             actor_lr: Learning rate for actor
             critic_lr: Learning rate for critic
             gamma: Discount factor
@@ -169,7 +170,7 @@ class ActorCriticAgent:
                 - next_piece: 4x4 matrix of next piece
                 - hold_piece: 4x4 matrix of hold piece
         Returns:
-            Integer (0-6) representing the selected action
+            Integer (0-8) representing the selected action
         """
         # Throttle actor to at least 50 ms per action
         start = time.perf_counter()
@@ -186,9 +187,9 @@ class ActorCriticAgent:
                 top_k_indices = top_k_indices[0].cpu().numpy()
                 action = int(np.random.choice(top_k_indices))
         # Ensure minimum 50 ms per call
-        elapsed = time.perf_counter() - start
-        if elapsed < 0.05:
-            time.sleep(0.05 - elapsed)
+        # elapsed = time.perf_counter() - start
+        # if elapsed < 0.05:
+        #     time.sleep(0.05 - elapsed)
         return action
     
     def update_epsilon(self):
