@@ -190,14 +190,33 @@ class TetrisEnv(gym.Env):
             self.player.action_handler.move_left()
         elif action == 1:  # Move Right
             self.player.action_handler.move_right()
-        elif action == 2:  # Move Down
+        elif action == 2:  # Soft Drop / Move Down
+            prev_y = self.player.current_piece.y
             self.player.action_handler.move_down()
+            # If unable to move down, lock piece
+            if self.player.current_piece.y == prev_y:
+                lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
+                piece_placed = True
         elif action == 3:  # Rotate Clockwise
             self.player.action_handler.rotate_cw()
         elif action == 4:  # Rotate Counter-clockwise
             self.player.action_handler.rotate_ccw()
         elif action == 5:  # Hard Drop
             self.player.action_handler.hard_drop()
+            # Ensure at least one block on playfield before locking
+            formatted = convert_shape_format(self.player.current_piece)
+            if not any(0 <= y < 20 for _, y in formatted):
+                observation = self._get_observation()
+                reward = self._get_reward(0, True)
+                info = {
+                    'lines_cleared': 0,
+                    'score': self.player.score,
+                    'level': self.game.level,
+                    'episode_steps': self.episode_steps,
+                    'piece_placed': False,
+                    'invalid_placement': True
+                }
+                return observation, reward, True, info
             # Immediately lock piece to avoid extra gravity
             lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
             piece_placed = True
@@ -212,6 +231,20 @@ class TetrisEnv(gym.Env):
             if valid_space(self.player.current_piece, create_grid(self.player.locked_positions)):
                 self.player.current_piece.y += 1
             else:
+                # Ensure at least one block on playfield before locking
+                formatted = convert_shape_format(self.player.current_piece)
+                if not any(0 <= y < 20 for _, y in formatted):
+                    observation = self._get_observation()
+                    reward = self._get_reward(lines_cleared, True)
+                    info = {
+                        'lines_cleared': lines_cleared,
+                        'score': self.player.score,
+                        'level': self.game.level,
+                        'episode_steps': self.episode_steps,
+                        'piece_placed': False,
+                        'invalid_placement': True
+                    }
+                    return observation, reward, True, info
                 # lock piece and clear lines
                 lines_cleared += self.player.update(self.game.fall_speed, self.game.level)
                 piece_placed = True
