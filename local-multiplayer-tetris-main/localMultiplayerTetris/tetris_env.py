@@ -168,7 +168,7 @@ class TetrisEnv(gym.Env):
         lines_cleared = 0
 
         # Detect immediate game over if newly spawned piece overlaps locked blocks
-        if not hasattr(self, '_spawn_checked'):
+        if not getattr(self, '_spawn_checked', False):
             self._spawn_checked = True
             formatted = convert_shape_format(self.player.current_piece)
             for x, y in formatted:
@@ -195,6 +195,8 @@ class TetrisEnv(gym.Env):
             self.player.action_handler.move_down()
             # If unable to move down, lock piece
             if self.player.current_piece.y == prev_y:
+                # Lock piece after soft drop
+                self.player.change_piece = True
                 lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
                 piece_placed = True
         elif action == 3:  # Rotate Clockwise
@@ -245,7 +247,8 @@ class TetrisEnv(gym.Env):
                         'invalid_placement': True
                     }
                     return observation, reward, True, info
-                # lock piece and clear lines
+                # Lock piece due to gravity
+                self.player.change_piece = True
                 lines_cleared += self.player.update(self.game.fall_speed, self.game.level)
                 piece_placed = True
         
