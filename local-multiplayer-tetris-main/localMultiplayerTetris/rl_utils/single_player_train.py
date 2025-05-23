@@ -10,6 +10,7 @@ import cProfile
 import pstats
 import sys
 import argparse
+from torch.utils.tensorboard import SummaryWriter
 
 # Set up logging
 logging.basicConfig(
@@ -34,6 +35,8 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         no_eval: Whether to disable evaluation during training
         verbose: Enable per-step logging
     """
+    # Set up TensorBoard writer
+    writer = SummaryWriter(log_dir='logs/tensorboard')
     try:
         # Create environment; show window if visualize=True
         env = TetrisEnv(single_player=True, headless=not visualize)
@@ -153,6 +156,18 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                     logging.info(f"Critic Loss: {episode_critic_loss:.4f}")
                 logging.info("")
                 
+                # Log to TensorBoard
+                writer.add_scalar('Train/Reward', episode_reward, episode+1)
+                writer.add_scalar('Train/Length', episode_length, episode+1)
+                writer.add_scalar('Train/Lines', episode_lines_cleared, episode+1)
+                writer.add_scalar('Train/Score', episode_score, episode+1)
+                writer.add_scalar('Train/PiecesPlaced', episode_pieces_placed, episode+1)
+                writer.add_scalar('Train/MaxLevel', episode_max_level, episode+1)
+                writer.add_scalar('Train/Epsilon', agent.epsilon, episode+1)
+                if train_steps > 0:
+                    writer.add_scalar('Train/ActorLoss', episode_actor_loss, episode+1)
+                    writer.add_scalar('Train/CriticLoss', episode_critic_loss, episode+1)
+                
                 # Save model checkpoint
                 if (episode + 1) % save_interval == 0:
                     try:
@@ -194,6 +209,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         logging.error(f"Fatal error during training: {str(e)}")
     finally:
         env.close()
+        writer.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
