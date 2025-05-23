@@ -19,7 +19,7 @@ class TetrisEnv(gym.Env):
         # account for training without GUI
         self.headless = headless
         # Initialize pygame
-        if !(self.headless):
+        if not self.headless:
             pygame.init()
         
         # Define action space (7 possible actions)
@@ -242,5 +242,5 @@ class TetrisEnv(gym.Env):
             self.game = None
         if self.surface is not None:
             self.surface = None
-        if !(self.headless):
+        if not self.headless:
             pygame.quit() 
