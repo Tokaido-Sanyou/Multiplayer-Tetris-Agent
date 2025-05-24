@@ -43,7 +43,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         
         # Create agent
         state_dim = 202  # 20x10 grid + next_piece + hold_piece scalars
-        action_dim = 7   # 7 possible actions
+        action_dim = 8   # 8 possible actions, including no-op (ID 7)
         agent = ActorCriticAgent(state_dim, action_dim)
         if checkpoint:
             try:

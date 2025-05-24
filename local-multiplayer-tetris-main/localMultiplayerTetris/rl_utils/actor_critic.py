@@ -273,7 +273,7 @@ class ActorCriticAgent:
     
     def load(self, path):
         """Load model weights"""
-        checkpoint = torch.load(path)
+        checkpoint = torch.load(path, map_location=self.device)
         self.network.load_state_dict(checkpoint['network_state_dict'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])

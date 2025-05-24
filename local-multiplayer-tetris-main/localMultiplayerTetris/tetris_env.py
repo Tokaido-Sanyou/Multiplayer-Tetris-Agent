@@ -229,10 +229,11 @@ class TetrisEnv(gym.Env):
 
         # Gravity: drop every gravity_interval agent steps (skip after hard drop)
         if action != 5 and self.episode_steps % self.gravity_interval == 0:
-            # attempt move down
-            if valid_space(self.player.current_piece, create_grid(self.player.locked_positions)):
-                self.player.current_piece.y += 1
-            else:
+            # Soft gravity drop via action handler
+            prev_y = self.player.current_piece.y
+            self.player.action_handler.move_down()
+            # If unable to move down, lock piece
+            if self.player.current_piece.y == prev_y:
                 # Ensure at least one block on playfield before locking
                 formatted = convert_shape_format(self.player.current_piece)
                 if not any(0 <= y < 20 for _, y in formatted):
@@ -247,7 +248,6 @@ class TetrisEnv(gym.Env):
                         'invalid_placement': True
                     }
                     return observation, reward, True, info
-                # Lock piece due to gravity
                 self.player.change_piece = True
                 lines_cleared += self.player.update(self.game.fall_speed, self.game.level)
                 piece_placed = True

@@ -45,6 +45,7 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
     - 4: Rotate Counter-clockwise
     - 5: Hard Drop
     - 6: Hold Piece
+    - 7: No-op action
     
     Reward Structure (from tetris_env.py):
     - +100 per line cleared
@@ -206,7 +207,7 @@ if __name__ == '__main__':
     # Create environment and agent
     env = TetrisEnv()
     state_dim = 202  # 20x10 grid + 2 scalars
-    action_dim = 7   # 7 possible actions
+    action_dim = 8   # 8 possible actions, including no-op
     agent = ActorCriticAgent(state_dim, action_dim)
     
     # Train agent
