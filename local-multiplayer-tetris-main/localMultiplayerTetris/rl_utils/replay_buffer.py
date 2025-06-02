@@ -79,17 +79,25 @@ class ReplayBuffer:
     def _state_to_tensor(self, state):
         """
         Convert state dictionary to tensor
-        State structure defined in tetris_env.py:
-        - Grid: 20x10 matrix (200 values)
-        - Next piece: scalar shape ID (0-7)
-        - Hold piece: scalar shape ID (0-7)
-        Total: 202 values
+        State includes:
+        - grid: 20×10 matrix (200 values)
+        - next_piece: shape ID scalar
+        - hold_piece: shape ID scalar
+        - current_shape: shape ID scalar
+        - current_rotation: rotation index scalar
+        - current_x: x-coordinate scalar
+        - current_y: y-coordinate scalar
+        Total: 200 + 6 = 206 values
         """
         grid = torch.FloatTensor(state['grid'].flatten())
-        # Encode next and hold pieces as scalars
-        next_piece = torch.FloatTensor([state['next_piece']])
-        hold_piece = torch.FloatTensor([state['hold_piece']])
-        return torch.cat([grid, next_piece, hold_piece])
+        # Scalars: next, hold, curr_shape, rotation, x, y
+        next_piece = torch.FloatTensor([state.get('next_piece', 0)])
+        hold_piece = torch.FloatTensor([state.get('hold_piece', 0)])
+        curr_shape = torch.FloatTensor([state.get('current_shape', 0)])
+        curr_rot = torch.FloatTensor([state.get('current_rotation', 0)])
+        curr_x = torch.FloatTensor([state.get('current_x', 0)])
+        curr_y = torch.FloatTensor([state.get('current_y', 0)])
+        return torch.cat([grid, next_piece, hold_piece, curr_shape, curr_rot, curr_x, curr_y])
     
     def sample(self, batch_size):
         """
@@ -151,4 +159,4 @@ class ReplayBuffer:
     
     def __len__(self):
         """Return current size of buffer"""
-        return len(self.buffer) 
+        return len(self.buffer)

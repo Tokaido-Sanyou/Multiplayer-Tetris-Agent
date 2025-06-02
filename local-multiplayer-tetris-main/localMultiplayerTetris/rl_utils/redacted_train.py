@@ -25,12 +25,7 @@ def preprocess_state(state):
     grid = state['grid'].flatten()
     next_piece = np.array([state['next_piece']])
     hold_piece = np.array([state['hold_piece']])
-    curr_shape = np.array([state.get('current_shape', 0)])
-    curr_rot = np.array([state.get('current_rotation', 0)])
-    curr_x = np.array([state.get('current_x', 0)])
-    curr_y = np.array([state.get('current_y', 0)])
-    # Concatenate all features
-    return np.concatenate([grid, next_piece, hold_piece, curr_shape, curr_rot, curr_x, curr_y])
+    return np.concatenate([grid, next_piece, hold_piece])
 
 def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interval=50):
     """
@@ -130,12 +125,14 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
         actor_losses.append(episode_actor_loss)
         critic_losses.append(episode_critic_loss)
         # TensorBoard logging
+        '''
         writer.add_scalar('Episode/Reward', episode_reward, episode + 1)
         writer.add_scalar('Episode/Length', episode_length, episode + 1)
         writer.add_scalar('Episode/LinesCleared', episode_lines_cleared, episode + 1)
         writer.add_scalar('Episode/Score', episode_score, episode + 1)
         writer.add_scalar('Episode/MaxLevel', episode_max_level, episode + 1)
-        writer.flush()
+        '''
+        
 
 
         # Print episode summary

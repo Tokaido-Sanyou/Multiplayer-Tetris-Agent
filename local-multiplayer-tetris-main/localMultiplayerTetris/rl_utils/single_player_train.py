@@ -22,7 +22,7 @@ logging.basicConfig(
     ]
 )
 
-def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False):
+def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False):
     """
     Train an agent as player 1 in the Tetris environment
     
@@ -44,7 +44,16 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         # Create agent
         state_dim = 202  # 20x10 grid + next_piece + hold_piece scalars
         action_dim = 8   # 8 possible actions, including no-op (ID 7)
-        agent = ActorCriticAgent(state_dim, action_dim)
+        agent = ActorCriticAgent(
+            state_dim,
+            action_dim,
+            gamma_start=0.9,
+            gamma_end=0.99,
+            epsilon_start=1.0,
+            epsilon_end=0.05,
+            schedule_episodes=num_episodes
+        )
+        print("Using device:", agent.device)
         if checkpoint:
             try:
                 agent.load(checkpoint)
@@ -167,7 +176,8 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                 if train_steps > 0:
                     writer.add_scalar('Train/ActorLoss', episode_actor_loss, episode+1)
                     writer.add_scalar('Train/CriticLoss', episode_critic_loss, episode+1)
-                
+
+
                 # Save model checkpoint
                 if (episode + 1) % save_interval == 0:
                     try:
@@ -176,11 +186,30 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                     except Exception as e:
                         logging.error(f"Error saving checkpoint: {str(e)}")
                 
-                # Evaluate agent
+                # Evaluate agent: record reward, score, and lines statistics
                 if not no_eval and (episode + 1) % eval_interval == 0:
                     try:
-                        eval_reward = evaluate_agent(env, agent)
-                        logging.info(f"Evaluation Reward: {eval_reward:.2f}")
+                        # evaluate_agent now returns (rewards, scores, lines)
+                        eval_rewards, eval_scores, eval_lines = evaluate_agent(env, agent)
+                        # compute metrics
+                        r_avg, r_std, r_max = np.mean(eval_rewards), np.std(eval_rewards), np.max(eval_rewards)
+                        s_avg, s_std, s_max = np.mean(eval_scores), np.std(eval_scores), np.max(eval_scores)
+                        l_max = np.max(eval_lines)
+                        # log to console
+                        logging.info(f"Eval Rewards   – avg={r_avg:.2f}, std={r_std:.2f}, max={r_max:.2f}")
+                        logging.info(f"Eval Scores    – avg={s_avg:.2f}, std={s_std:.2f}, max={s_max:.2f}")
+                        logging.info(f"Eval Lines Cleared – max={l_max}")
+                        # log to TensorBoard
+                        writer.add_scalar('Eval/AvgReward', r_avg, episode + 1)
+                        writer.add_scalar('Eval/StdReward', r_std, episode + 1)
+                        writer.add_scalar('Eval/MaxReward', r_max, episode + 1)
+                        writer.add_scalar('Eval/AvgScore', s_avg, episode + 1)
+                        writer.add_scalar('Eval/StdScore', s_std, episode + 1)
+                        writer.add_scalar('Eval/MaxScore', s_max, episode + 1)
+                        writer.add_scalar('Eval/MaxLines', l_max, episode + 1)
+                        print(f"Eval Rewards   – avg={r_avg:.2f}, std={r_std:.2f}, max={r_max:.2f}")
+                        print(f"Eval Scores    – avg={s_avg:.2f}, std={s_std:.2f}, max={s_max:.2f}")
+                        print(f"Eval Lines Cleared – max={l_max}")
                         logging.info("")
                     except Exception as e:
                         logging.error(f"Error during evaluation: {str(e)}")
