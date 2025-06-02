@@ -3,8 +3,8 @@ import numpy as np
 import torch
 import logging
 from ..tetris_env import TetrisEnv
-from .actor_critic import ActorCriticAgent
-from .train import preprocess_state, evaluate_agent
+from .state_model import StateModel
+from .hierarchical_agent import HierarchicalAgent
 import pygame
 import cProfile
 import pstats
@@ -22,17 +22,24 @@ logging.basicConfig(
     ]
 )
 
-def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False):
+def preprocess_state(state):
+    # flatten grid and piece metadata into vector (206 dims): grid(200)+cur_metadata(6)
+    grid = state['grid'].flatten()
+    # current piece metadata assumed appended in state dict
+    cur_meta = np.array([state['cur_shape'], state['cur_rot'], state['cur_x'], state['cur_y'], state['next_piece'], state['hold_piece']])
+    return np.concatenate([grid, cur_meta])
+
+def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50,
+                        visualize=True, checkpoint=None, no_eval=False, verbose=False):
     """
     Train an agent as player 1 in the Tetris environment
     
     Args:
         num_episodes: Number of episodes to train for
         save_interval: Save model every N episodes
-        eval_interval: Evaluate agent every N episodes
         visualize: Whether to render the environment during training
         checkpoint: Path to checkpoint file to load
-        no_eval: Whether to disable evaluation during training
+        no_eval: Disable evaluation during training
         verbose: Enable per-step logging
     """
     # Set up TensorBoard writer
@@ -41,13 +48,14 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         # Create environment; show window if visualize=True
         env = TetrisEnv(single_player=True, headless=not visualize)
         
-        # Create agent
-        state_dim = 202  # 20x10 grid + next_piece + hold_piece scalars
-        action_dim = 8   # 8 possible actions, including no-op (ID 7)
-        agent = ActorCriticAgent(state_dim, action_dim)
+        # Initialize state prediction model and hierarchical agent
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        state_model = StateModel(state_dim=206).to(device)
+        agent = HierarchicalAgent(state_model, device=device)
         if checkpoint:
             try:
-                agent.load(checkpoint)
+                # load state_model weights
+                state_model.load_state_dict(torch.load(checkpoint, map_location=device))
                 logging.info(f"Loaded checkpoint from {checkpoint}")
             except Exception as e:
                 logging.error(f"Error loading checkpoint: {e}")
@@ -176,14 +184,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                     except Exception as e:
                         logging.error(f"Error saving checkpoint: {str(e)}")
                 
-                # Evaluate agent
-                if not no_eval and (episode + 1) % eval_interval == 0:
-                    try:
-                        eval_reward = evaluate_agent(env, agent)
-                        logging.info(f"Evaluation Reward: {eval_reward:.2f}")
-                        logging.info("")
-                    except Exception as e:
-                        logging.error(f"Error during evaluation: {str(e)}")
+                # evaluation deprecated in single_player_train
                 
             except Exception as e:
                 logging.error(f"Error during episode {episode + 1}: {str(e)}")
@@ -230,7 +231,6 @@ if __name__ == '__main__':
         train_single_player(
             num_episodes=args.episodes,
             save_interval=args.save_interval,
-            eval_interval=args.eval_interval,
             visualize=args.visualize,
             checkpoint=args.checkpoint,
             no_eval=args.no_eval,

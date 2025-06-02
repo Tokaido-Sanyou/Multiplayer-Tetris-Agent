@@ -8,6 +8,14 @@ from .utils import create_grid, check_lost, count_holes
 from .piece_utils import valid_space, convert_shape_format
 from .constants import shapes, shape_colors, s_width, s_height
 import time
+import logging
+
+# Configure debug logging to file
+logging.basicConfig(level=logging.DEBUG,
+                    filename='tetris_debug.log',
+                    filemode='w',
+                    format='%(asctime)s %(levelname)s:%(message)s')
+logger = logging.getLogger(__name__)
 
 class TetrisEnv(gym.Env):
     """
@@ -95,9 +103,9 @@ class TetrisEnv(gym.Env):
     
     def _get_reward(self, lines_cleared, game_over):
         # 1. Line-clear + time penalty
-        bases = {1:40, 2:100, 3:300, 4:1200}
+        bases = {1:100, 2:200, 3:400, 4:1600}
         reward = bases.get(lines_cleared, 0) * (self.game.level + 1)
-        reward += -0.1   # small time penalty
+        # reward += -0.01   # small time penalty
 
         # 2. Game-over check
         if game_over:
@@ -106,25 +114,26 @@ class TetrisEnv(gym.Env):
         # 3. Compute features
         grid = create_grid(self.player.locked_positions)
         col_heights = [  # from bottom (row 19) up
-        next((r for r in range(20) if grid[r][c]!=(0,0,0)), 20)
-        for c in range(10)
+            next((r for r in range(20) if grid[r][c] != (0, 0, 0)), 20)
+            for c in range(10)
         ]
+        max_height = max(col_heights)  # Only consider the highest column
         curr = {
-        "holes": sum(
-            1 for c in range(10)
-            for r in range(col_heights[c]+1, 20)
-            if grid[r][c]==(0,0,0)
-        ),
-        "agg_h": sum(col_heights),
-        "bump": sum(abs(col_heights[i]-col_heights[i+1]) for i in range(9)),
+            "holes": sum(
+                1 for c in range(10)
+                for r in range(col_heights[c] + 1, 20)
+                if grid[r][c] == (0, 0, 0)
+            ),
+            "max_h": max_height,  # Use max height instead of aggregate height
+            "bump": sum(abs(col_heights[i] - col_heights[i + 1]) for i in range(9)),
         }
 
         # 4. Delta-based shaping
         prev = self.prev_features if hasattr(self, 'prev_features') else None
         if prev:
-            reward += 4.0 * (prev["holes"]   - curr["holes"])
-            reward += 0.5 * (prev["agg_h"]   - curr["agg_h"])
-            reward += 1.0 * (prev["bump"]    - curr["bump"])
+            reward += 4.0 * (prev["holes"] - curr["holes"])
+            reward += 10 * (prev["max_h"] - curr["max_h"])  # Adjust for max height
+            reward += 1.0 * (prev["bump"] - curr["bump"])
 
         # 5. Store for next step
         self.prev_features = curr
@@ -164,26 +173,13 @@ class TetrisEnv(gym.Env):
     def step(self, action):
         """Execute one time step within the environment"""
         self.episode_steps += 1
+        # Debug: log step start
+        logger.debug(
+            f"STEP {self.episode_steps}: Action={action}. Current piece pos=({self.player.current_piece.x},{self.player.current_piece.y}). Locked count={len(self.player.locked_positions)}"
+        )
+
         piece_placed = False
         lines_cleared = 0
-
-        # Detect immediate game over if newly spawned piece overlaps locked blocks
-        if not getattr(self, '_spawn_checked', False):
-            self._spawn_checked = True
-            formatted = convert_shape_format(self.player.current_piece)
-            for x, y in formatted:
-                if y >= 0 and (x, y) in self.player.locked_positions:
-                    observation = self._get_observation()
-                    reward = self._get_reward(0, True)
-                    info = {
-                        'lines_cleared': 0,
-                        'score': self.player.score,
-                        'level': self.game.level,
-                        'episode_steps': self.episode_steps,
-                        'piece_placed': False,
-                        'spawn_collision': True
-                    }
-                    return observation, reward, True, info
 
         # Map action to game action
         if action == 0:  # Move Left
@@ -199,6 +195,20 @@ class TetrisEnv(gym.Env):
                 self.player.change_piece = True
                 lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
                 piece_placed = True
+                # Reset spawn check for new piece
+                self._spawn_checked = False
+                # Immediate game-over if locked blocks above grid
+                if check_lost(self.player.locked_positions):
+                    obs = self._get_observation()
+                    rw = self._get_reward(lines_cleared, True)
+                    info = {'lines_cleared': lines_cleared, 'score': self.player.score,
+                            'level': self.game.level, 'episode_steps': self.episode_steps,
+                            'piece_placed': piece_placed}
+                    return obs, rw, True, info
+                # Debug: log lock and spawn
+                logger.debug(
+                    f"LOCK (soft drop): lines_cleared={lines_cleared}. Next piece shape={self.player.current_piece.shape}, pos=({self.player.current_piece.x},{self.player.current_piece.y})"
+                )
         elif action == 3:  # Rotate Clockwise
             self.player.action_handler.rotate_cw()
         elif action == 4:  # Rotate Counter-clockwise
@@ -208,6 +218,7 @@ class TetrisEnv(gym.Env):
             # Ensure at least one block on playfield before locking
             formatted = convert_shape_format(self.player.current_piece)
             if not any(0 <= y < 20 for _, y in formatted):
+                logging.debug(f"Hard drop invalid placement: formatted_positions={formatted}, locked_positions={self.player.locked_positions}")
                 observation = self._get_observation()
                 reward = self._get_reward(0, True)
                 info = {
@@ -219,38 +230,58 @@ class TetrisEnv(gym.Env):
                     'invalid_placement': True
                 }
                 return observation, reward, True, info
-            # Immediately lock piece to avoid extra gravity
             lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
             piece_placed = True
-        elif action == 6:  # Hold Piece
-            self.player.action_handler.hold_piece()
-        elif action == 7:  # No-op action
-            pass
-
+            # Reset spawn check for new piece
+            self._spawn_checked = False
+            # Debug: log lock and spawn (hard drop)
+            logger.debug(
+                f"LOCK (hard drop): lines_cleared={lines_cleared}. Next piece shape={self.player.current_piece.shape}, pos=({self.player.current_piece.x},{self.player.current_piece.y})"
+            )
+            # Immediate game-over if locked blocks above grid
+            if check_lost(self.player.locked_positions):
+                logging.debug("Game over after hard drop: locked above visible grid detected")
+                obs = self._get_observation()
+                rw = self._get_reward(lines_cleared, True)
+                info = {'lines_cleared': lines_cleared, 'score': self.player.score,
+                        'level': self.game.level, 'episode_steps': self.episode_steps,
+                        'piece_placed': piece_placed}
+                return obs, rw, True, info
         # Gravity: drop every gravity_interval agent steps (skip after hard drop)
         if action != 5 and self.episode_steps % self.gravity_interval == 0:
-            # Soft gravity drop via action handler
             prev_y = self.player.current_piece.y
             self.player.action_handler.move_down()
-            # If unable to move down, lock piece
             if self.player.current_piece.y == prev_y:
-                # Ensure at least one block on playfield before locking
+                # Stuck: check spawn collision if still above grid
                 formatted = convert_shape_format(self.player.current_piece)
-                if not any(0 <= y < 20 for _, y in formatted):
-                    observation = self._get_observation()
-                    reward = self._get_reward(lines_cleared, True)
-                    info = {
-                        'lines_cleared': lines_cleared,
-                        'score': self.player.score,
-                        'level': self.game.level,
-                        'episode_steps': self.episode_steps,
-                        'piece_placed': False,
-                        'invalid_placement': True
-                    }
-                    return observation, reward, True, info
+                if all(y < 0 for _, y in formatted):
+                    logging.debug(f"Gravity spawn collision detected: formatted_positions={formatted}, locked_positions={self.player.locked_positions}")
+                    obs = self._get_observation()
+                    rw = self._get_reward(0, True)
+                    info = {'lines_cleared': 0,
+                            'score': self.player.score,
+                            'level': self.game.level,
+                            'episode_steps': self.episode_steps,
+                            'piece_placed': False,
+                            'spawn_collision': True}
+                    return obs, rw, True, info
+                # Normal lock
                 self.player.change_piece = True
                 lines_cleared += self.player.update(self.game.fall_speed, self.game.level)
                 piece_placed = True
+                # Debug: log lock and spawn (gravity)
+                logger.debug(
+                    f"LOCK (gravity): lines_cleared={lines_cleared}. Next piece shape={self.player.current_piece.shape}, pos=({self.player.current_piece.x},{self.player.current_piece.y})"
+                )
+                # Check if any locked block is above grid
+                if check_lost(self.player.locked_positions):
+                    logging.debug("Game over after gravity lock: locked above visible grid detected")
+                    obs = self._get_observation()
+                    rw = self._get_reward(lines_cleared, True)
+                    info = {'lines_cleared': lines_cleared, 'score': self.player.score,
+                            'level': self.game.level, 'episode_steps': self.episode_steps,
+                            'piece_placed': piece_placed}
+                    return obs, rw, True, info
         
         # Ensure single player mode is maintained
         self._ensure_single_player_mode()
@@ -301,9 +332,11 @@ class TetrisEnv(gym.Env):
         self.episode_steps = 0
         self.accum_reward = 0  # initialize accumulated reward component
         self.prev_features = None  # clear feature-history for shaping
-        # Reset spawn collision flag
-        self._spawn_checked = False
-        
+
+        # Debug: log reset state
+        logger.debug(f"RESET: Game reset. Episode steps set to {self.episode_steps}")
+        logger.debug(f"RESET: Spawn piece: shape={self.player.current_piece.shape}, pos=({self.player.current_piece.x},{self.player.current_piece.y})")
+        logger.debug(f"RESET: Locked positions count={len(self.player.locked_positions)}")
         # Get initial observation
         observation = self._get_observation()
         
