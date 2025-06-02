@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from .replay_buffer import ReplayBuffer
+from collections import deque
+import random
 
 class DQN(nn.Module):
     """
@@ -15,27 +16,22 @@ class DQN(nn.Module):
     Total input dimension: 202
     
     Output Structure:
-    - 7 Q-values corresponding to actions:
-        0: Move Left (action_handler.py: move_left)
-        1: Move Right (action_handler.py: move_right)
-        2: Move Down (action_handler.py: move_down)
-        3: Rotate Clockwise (action_handler.py: rotate_cw)
-        4: Rotate Counter-clockwise (action_handler.py: rotate_ccw)
-        5: Hard Drop (action_handler.py: hard_drop)
-        6: Hold Piece (action_handler.py: hold_piece)
-    
-    Related Files:
-    - tetris_env.py: Defines action space and state structure
-    - action_handler.py: Implements action mechanics
-    - game.py: Contains game state and piece movement logic
-    - piece.py: Defines piece shapes and rotation logic
+    - 8 Q-values corresponding to actions:
+        0: Move Left
+        1: Move Right
+        2: Move Down
+        3: Rotate Clockwise
+        4: Rotate Counter-clockwise
+        5: Hard Drop
+        6: Hold Piece
+        7: No-op
     """
     def __init__(self, input_dim, output_dim):
         """
         Initialize DQN network
         Args:
             input_dim: Dimension of input state (202)
-            output_dim: Number of possible actions (7)
+            output_dim: Number of possible actions (8)
         """
         super(DQN, self).__init__()
         
@@ -72,7 +68,7 @@ class DQN(nn.Module):
         Args:
             x: Input tensor of shape (batch_size, 202)
         Returns:
-            Q-values for each action of shape (batch_size, 7)
+            Q-values for each action of shape (batch_size, 8)
         """
         # Reshape input
         batch_size = x.size(0)
@@ -92,6 +88,22 @@ class DQN(nn.Module):
         # Output Q-values
         return self.combined(combined)
 
+class ReplayBuffer:
+    """Experience replay buffer for DQN"""
+    def __init__(self, capacity):
+        self.buffer = deque(maxlen=capacity)
+    
+    def push(self, state, action, reward, next_state, done, info):
+        self.buffer.append((state, action, reward, next_state, done, info))
+    
+    def sample(self, batch_size):
+        if len(self.buffer) < batch_size:
+            return None
+        return random.sample(self.buffer, batch_size)
+    
+    def __len__(self):
+        return len(self.buffer)
+
 class DQNAgent:
     """
     DQN Agent for Tetris
@@ -109,6 +121,7 @@ class DQNAgent:
     - 4: Rotate Counter-clockwise
     - 5: Hard Drop
     - 6: Hold Piece
+    - 7: No-op
     
     Related Files:
     - tetris_env.py: Defines action space and state structure
@@ -121,7 +134,7 @@ class DQNAgent:
         Initialize DQN agent
         Args:
             state_dim: Dimension of state space (202)
-            action_dim: Number of possible actions (7)
+            action_dim: Number of possible actions (8)
             learning_rate: Learning rate for optimizer
             gamma: Discount factor
             epsilon: Initial exploration rate
@@ -156,6 +169,7 @@ class DQNAgent:
         self.batch_size = 64
         self.target_update = 10
         self.gradient_clip = 1.0
+        self.train_step = 0
     
     def select_action(self, state):
         """
@@ -166,15 +180,21 @@ class DQNAgent:
                 - next_piece: scalar ID
                 - hold_piece: scalar ID
         Returns:
-            Integer (0-6) representing the selected action
+            Integer (0-7) representing the selected action
         """
         if np.random.random() < self.epsilon:
             return np.random.randint(self.action_dim)
         
         with torch.no_grad():
-            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            q_values = self.policy_net(state)
-            top_k_q_values, top_k_indices = torch.topk(q_values, self.top_k)  # watch for batching, debug shapes for later
+            # Convert state dict to tensor
+            state_tensor = torch.FloatTensor([
+                state['grid'].flatten(),
+                state['next_piece'],
+                state['hold_piece']
+            ]).unsqueeze(0).to(self.device)
+            
+            q_values = self.policy_net(state_tensor)
+            top_k_values, top_k_indices = torch.topk(q_values, self.top_k, dim=1)
             return int(np.random.choice(top_k_indices.cpu().numpy()))
             # return q_values.argmax().item()
     
@@ -202,15 +222,23 @@ class DQNAgent:
         if batch is None:
             return None
             
-        states, actions, rewards, next_states, dones, info, indices, weights = batch
+        # Unpack batch
+        states, actions, rewards, next_states, dones, infos = zip(*batch)
         
-        # Move tensors to device
-        states = states.to(self.device)
-        actions = actions.to(self.device)
-        rewards = rewards.to(self.device)
-        next_states = next_states.to(self.device)
-        dones = dones.to(self.device)
-        weights = weights.to(self.device)
+        # Convert to tensors
+        states = torch.FloatTensor([
+            [s['grid'].flatten(), s['next_piece'], s['hold_piece']]
+            for s in states
+        ]).to(self.device)
+        
+        next_states = torch.FloatTensor([
+            [s['grid'].flatten(), s['next_piece'], s['hold_piece']]
+            for s in next_states
+        ]).to(self.device)
+        
+        actions = torch.LongTensor(actions).to(self.device)
+        rewards = torch.FloatTensor(rewards).to(self.device)
+        dones = torch.FloatTensor(dones).to(self.device)
         
         # Compute current Q values
         current_q_values = self.policy_net(states).gather(1, actions.unsqueeze(1))
@@ -223,12 +251,8 @@ class DQNAgent:
             next_q_values = self.target_net(next_states).gather(1, next_actions)
             target_q_values = rewards.unsqueeze(1) + (1 - dones.unsqueeze(1)) * self.gamma * next_q_values
         
-        # Compute loss with importance sampling weights
-        loss = (weights.unsqueeze(1) * (current_q_values - target_q_values) ** 2).mean()
-        
-        # Update priorities
-        td_errors = torch.abs(current_q_values - target_q_values).detach().cpu().numpy()
-        self.memory.update_priorities(indices, td_errors + 1e-6)
+        # Compute loss
+        loss = nn.MSELoss()(current_q_values, target_q_values)
         
         # Optimize the model
         self.optimizer.zero_grad()
@@ -236,6 +260,11 @@ class DQNAgent:
         # Clip gradients
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.gradient_clip)
         self.optimizer.step()
+        
+        # Update target network periodically
+        self.train_step += 1
+        if self.train_step % self.target_update == 0:
+            self.update_target_network()
         
         return loss.item()
     
