@@ -277,6 +277,7 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--eval', action='store_true', help='Run evaluation only (no training, no exploration, no gradients)')
     parser.add_argument('--visualize', action='store_true', help='Enable GUI visualization')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint file to load')
     parser.add_argument('--episodes', type=int, default=1000, help='Number of episodes to train')
@@ -291,15 +292,67 @@ if __name__ == '__main__':
     if profiler:
         profiler.enable()
     try:
-        train_single_player(
-            num_episodes=args.episodes,
-            save_interval=args.save_interval,
-            eval_interval=args.eval_interval,
-            visualize=args.visualize,
-            checkpoint=args.checkpoint,
-            no_eval=args.no_eval,
-            verbose=args.verbose
-        )
+        if args.eval:
+            # Evaluation-only mode: no training, no exploration, no gradients
+            from .train import preprocess_state
+            env = TetrisEnv(single_player=True, headless=not args.visualize)
+            state_dim = 207
+            action_dim = 41
+            agent = ActorCriticAgent(
+                state_dim,
+                action_dim,
+                gamma_start=0.9,
+                gamma_end=0.99,
+                epsilon_start=0.0,
+                epsilon_end=0.0,
+                schedule_episodes=1
+            )
+            if args.checkpoint:
+                agent.load(args.checkpoint)
+            agent.epsilon = 0.0
+            num_eval_episodes = args.episodes
+            rewards = []
+            scores = []
+            lines = []
+            for ep in range(num_eval_episodes):
+                obs, _ = env.reset()
+                state = preprocess_state(obs)
+                done = False
+                total_reward = 0
+                total_score = 0
+                total_lines = 0
+                steps = 0
+                with torch.no_grad():
+                    while not done:
+                        action = agent.select_action(state)
+                        next_obs, reward, terminated, truncated, info = env.step(action)
+                        done = terminated or truncated
+                        state = preprocess_state(next_obs)
+                        total_reward += reward
+                        total_score += info.get('score', 0)
+                        total_lines += info.get('lines_cleared', 0)
+                        steps += 1
+                        if args.visualize:
+                            env.render()
+                rewards.append(total_reward)
+                scores.append(total_score)
+                lines.append(total_lines)
+                print(f"Eval Episode {ep+1}/{num_eval_episodes} | Reward: {total_reward:.2f} | Score: {total_score} | Lines: {total_lines} | Steps: {steps}")
+            print(f"\nEval Results over {num_eval_episodes} episodes:")
+            print(f"Avg Reward: {np.mean(rewards):.2f} ± {np.std(rewards):.2f}")
+            print(f"Avg Score: {np.mean(scores):.2f}")
+            print(f"Avg Lines: {np.mean(lines):.2f}")
+            env.close()
+        else:
+            train_single_player(
+                num_episodes=args.episodes,
+                save_interval=args.save_interval,
+                eval_interval=args.eval_interval,
+                visualize=args.visualize,
+                checkpoint=args.checkpoint,
+                no_eval=args.no_eval,
+                verbose=args.verbose
+            )
     except KeyboardInterrupt:
         print("Training interrupted by user")
     finally:

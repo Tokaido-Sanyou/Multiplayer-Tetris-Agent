@@ -396,14 +396,14 @@ class ActorCriticAgent:
         }
         torch.save(checkpoint, filepath)
 
-    def load(self, filepath: str, map_location: str | torch.device | None = None):
+    def load(self, filepath: str, map_location=None):
         """Load model and optimizer states from a checkpoint file.
 
         Args:
             filepath (str): Path to checkpoint file.
             map_location: Optional device mapping for torch.load.
         """
-        checkpoint = torch.load(filepath, map_location=map_location or self.device)
+        checkpoint = torch.load(filepath, map_location=self.device if map_location is None else map_location)
         self.network.load_state_dict(checkpoint['network'])
         if 'actor_optimizer' in checkpoint and checkpoint['actor_optimizer']:
             self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
