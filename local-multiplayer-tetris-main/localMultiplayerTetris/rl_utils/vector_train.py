@@ -50,11 +50,44 @@ def _sanitize_space_random(space):
         for sub in space.spaces:
             _sanitize_space_random(sub)
 
+# Wrapper to auto-reset when an env signals done  
+class AutoResetWrapper:
+    def __init__(self, env):
+        self.env = env
+        self.action_space = env.action_space
+        self.observation_space = env.observation_space
+        self.metadata = env.metadata  # propagate metadata for vector env
+
+    def close(self):
+        """Propagate close to underlying env for vector env cleanup"""
+        return self.env.close()
+
+    def reset(self):
+        return self.env.reset()
+
+    def step(self, action):
+        result = self.env.step(action)
+        # unify to 5-tuple
+        if len(result) == 4:
+            obs, reward, done, info = result
+            terminated, truncated = done, False
+        else:
+            obs, reward, terminated, truncated, info = result
+        done = terminated or truncated
+        if done:
+            new_obs, new_info = self.env.reset()
+            info['reset_info'] = new_info
+            obs = new_obs
+        if len(result) == 4:
+            return obs, reward, done, info
+        else:
+            return obs, reward, terminated, truncated, info
+
 def make_env(env_id, seed, headless=True):
     """Factory that creates a sanitized TetrisEnv instance for vectorized training."""
     def _init():
         env = TetrisEnv(single_player=True, headless=headless)
-        # Seed environment (covers numpy, random, etc.)
+         # Seed environment (covers numpy, random, etc.)
         env.seed(seed + env_id)
 
         # Gym's SyncVectorEnv deep-copies observation/action spaces; deepcopy of
@@ -63,7 +96,7 @@ def make_env(env_id, seed, headless=True):
         _sanitize_space_random(env.observation_space)
         _sanitize_space_random(env.action_space)
 
-        return env
+        return AutoResetWrapper(env)
 
     return _init
 
@@ -186,11 +219,10 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
     # Important: Each environment in AsyncVectorEnv runs in a separate process,
     # so they need to be picklable. Ensure TetrisEnv and its components are.
     logger.debug(f"train_vectorized: About to create AsyncVectorEnv with {num_envs} environments (switched from AsyncVectorEnv for debugging).")
-    # envs = AsyncVectorEnv([make_env(i, seed=i, headless=True) for i in range(num_envs)])
-    envs = SyncVectorEnv([make_env(i, seed=i, headless=True) for i in range(num_envs)]) # DEBUG: Using SyncVectorEnv
-    logger.debug(f"train_vectorized: SyncVectorEnv created: {envs}")
+    envs = AsyncVectorEnv([make_env(i, seed=i, headless=True) for i in range(num_envs)])
+    logger.debug(f"train_vectorized: AsyncVectorEnv created: {envs}")
     # For debugging, SyncVectorEnv can be easier as it runs in the main process:
-    # envs = SyncVectorEnv([make_env(i, seed=i, headless=True) for i in range(num_envs)])
+    # envs = SyncVectorEnv([make_env(i, seed=i, headless=True) for i in range(num_envs)]) # DEBUG: Using SyncVectorEnv
 
     # Assuming observation_space and action_space are consistent across envs
     # Use the first env to get space dimensions if needed, though TetrisEnv has fixed dims
@@ -332,7 +364,7 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
                 writer.add_scalar('Loss/Actor_vec', actor_loss, step)
                 writer.add_scalar('Loss/Critic_vec', critic_loss, step)
         
-        # Handle dones: if an environment is done, log its episode stats and reset
+        # Handle dones: if an environment is done, log its episode stats 
         for i in range(num_envs):
             # if dones_array[i]:
             if dones_array[i]:  # use dones_array instead of undefined dones
@@ -350,11 +382,6 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
                 writer.add_scalar(f'Train/Env{i}/Lines', episode_lines[i], total_episodes_completed)
                 writer.add_scalar(f'Train/Env{i}/Score', episode_scores[i], total_episodes_completed)
                 # Add more scalars as needed
-
-                # Reset the finished environment's state
-                reset_obs_i, _ = envs.envs[i].reset()
-                for key, value in reset_obs_i.items():
-                    current_batched_obs[key][i] = value
 
                 # Reset metrics for this environment
                 episode_rewards[i] = 0
