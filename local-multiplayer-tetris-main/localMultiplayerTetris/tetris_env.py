@@ -94,13 +94,13 @@ class TetrisEnv(gym.Env):
         }
     
     def _get_reward(self, lines_cleared, game_over):
-        # 1. Line-clear + time penalty
-        bases = {1:10, 2:20, 3:40, 4:80}
+        # 1. Line-clear rewards
+        bases = {1:20, 2:50, 3:100, 4:200}
         reward = bases.get(lines_cleared, 0) * (self.game.level + 1)
 
-        # 2. Game-over check
+        # 2. Game-over check with increased penalty
         if game_over:
-            return reward - 20
+            return reward - 50  # Increased from 30
 
         # 3. Compute features
         grid = create_grid(self.player.locked_positions)
@@ -108,6 +108,14 @@ class TetrisEnv(gym.Env):
             next((r for r in range(20) if grid[r][c]!=(0,0,0)), 20)
             for c in range(10)
         ]
+        
+        # Calculate middle column heights (columns 4,5) vs side columns
+        middle_height = sum(20 - h for h in col_heights[4:6]) / 2  # Average height of middle columns
+        side_height = sum(20 - h for h in col_heights[:4] + col_heights[6:]) / 8  # Average height of side columns
+        
+        # Calculate height variance to discourage uneven stacks
+        height_variance = np.var([20 - h for h in col_heights])
+        
         curr = {
             "holes": sum(
                 1 for c in range(10)
@@ -116,31 +124,44 @@ class TetrisEnv(gym.Env):
             ),
             "agg_h": sum(col_heights),
             "bump": sum(abs(col_heights[i]-col_heights[i+1]) for i in range(9)),
+            "middle_penalty": max(0, middle_height - side_height),  # Penalty when middle is higher than sides
+            "height_var": height_variance
         }
 
-        # 4. Delta-based shaping
+        # 4. Delta-based shaping with increased penalties
         prev = self.prev_features if hasattr(self, 'prev_features') else None
         if prev:
-            reward += 0.02 * (prev["holes"]   - curr["holes"])
-            reward += 0.4 * (prev["agg_h"]   - curr["agg_h"])
-            reward += 0.005 * (prev["bump"]    - curr["bump"])
+            reward += 0.1 * (prev["holes"] - curr["holes"])      # Increased from 0.03
+            reward += 0.8 * (prev["agg_h"] - curr["agg_h"])     # Increased from 0.5
+            reward += 0.05 * (prev["bump"] - curr["bump"])      # Increased from 0.01
+            
+            # Middle column penalty (increased and exponential)
+            if "middle_penalty" in prev:
+                middle_penalty = 0.8 * (curr["middle_penalty"] ** 1.5)  # Exponential penalty
+                reward -= middle_penalty
+            
+            # Height variance penalty
+            if "height_var" in prev:
+                reward -= 0.3 * curr["height_var"]
+            
+            # Height preservation bonus (only if not too high and sides are higher)
+            if curr["agg_h"] <= prev["agg_h"] and middle_height < 10 and middle_height <= side_height:
+                reward += 0.5  # Increased from 0.3
 
-            # Height preservation bonus
-            if curr["agg_h"] <= prev["agg_h"]:
-                reward += 0.3  # Bonus for not increasing height
-
-        # 5. Adjacent pieces bonus
+        # 5. Adjacent pieces and well formation bonus
         if hasattr(self, 'prev_grid'):
-            # Find newly placed blocks
             new_blocks = set()
             for i in range(20):
                 for j in range(10):
                     if grid[i][j] != (0,0,0) and self.prev_grid[i][j] == (0,0,0):
                         new_blocks.add((j,i))  # (x,y) coordinates
             
-            # Count adjacent pieces for new blocks
             if new_blocks:
+                # Count adjacent pieces and side placements
                 adjacent_count = 0
+                side_placement = False
+                middle_placement = False
+                
                 for x, y in new_blocks:
                     # Check all adjacent positions
                     for dx, dy in [(0,1), (0,-1), (1,0), (-1,0)]:
@@ -149,19 +170,41 @@ class TetrisEnv(gym.Env):
                             grid[ny][nx] != (0,0,0) and 
                             (nx,ny) not in new_blocks):
                             adjacent_count += 1
+                    
+                    # Check placement location
+                    if x in [0, 1, 8, 9]:
+                        side_placement = True
+                    elif x in [4, 5]:
+                        middle_placement = True
                 
-                # Reward based on number of adjacent pieces
-                reward += 0.1 * adjacent_count
-
-                # Position bonus for placing pieces above previous max height
-                if prev:
-                    prev_max_height = 20 - min(prev["agg_h"] / 10, 20)  # Convert to actual height
-                    new_max_height = min(y for _, y in new_blocks)
-                    if new_max_height < prev_max_height:  # Remember: lower y means higher up
-                        reward += 0.2  # Bonus for building upward
+                # Reward based on placement location
+                if side_placement:
+                    reward += 0.6  # Doubled side placement bonus
+                if middle_placement:
+                    reward -= 0.4  # Doubled middle placement penalty
+                
+                # Adjacent piece bonus (scaled by location)
+                if side_placement:
+                    reward += 0.2 * adjacent_count  # Higher bonus for side adjacency
+                else:
+                    reward += 0.1 * adjacent_count  # Normal adjacency bonus
+                
+                # Well formation bonus
+                for x in range(10):
+                    if x > 0 and x < 9:  # Skip edges
+                        left_height = 20 - col_heights[x-1]
+                        right_height = 20 - col_heights[x+1]
+                        center_height = 20 - col_heights[x]
+                        # If there's a well (gap between two higher columns)
+                        if center_height < min(left_height, right_height) - 2:
+                            # Higher bonus for wells near the sides
+                            if x in [1, 2, 7, 8]:
+                                reward += 0.4  # Double bonus for side wells
+                            else:
+                                reward += 0.2
 
         # Store current grid for next step
-        self.prev_grid = [row[:] for row in grid]  # Deep copy of grid
+        self.prev_grid = [row[:] for row in grid]
 
         # 6. Store features for next step
         self.prev_features = curr

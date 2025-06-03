@@ -124,7 +124,7 @@ class DQNAgent:
     - 6: Hold Piece
     - 7: No-op
     """
-    def __init__(self, state_dim, action_dim, learning_rate=1e-4, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, top_k_ac=3, rnd_weight=0.1):
+    def __init__(self, state_dim, action_dim, learning_rate=3e-4, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, top_k_ac=3, rnd_weight=0.1):
         """
         Initialize DQN agent with RND
         Args:
@@ -167,9 +167,9 @@ class DQNAgent:
         self.rnd = RND(state_dim, self.device)
         
         # Training parameters
-        self.batch_size = 64
-        self.target_update = 10
-        self.gradient_clip = 1.0
+        self.batch_size = 128  # Increased batch size
+        self.target_update = 5  # More frequent target updates
+        self.gradient_clip = 2.0  # Increased gradient clip
         self.train_step = 0
     
     def select_action(self, state):
@@ -200,11 +200,11 @@ class DQNAgent:
             # Combine Q-values with intrinsic reward
             q_values = q_values + self.rnd_weight * intrinsic_reward
             
-            # During exploration, prioritize actions that place pieces
+            # During exploration, use uniform random selection
             if np.random.random() < self.epsilon:
-                # 70% chance to choose from actions that place pieces
-                if np.random.random() < 0.7:
-                    # Prioritize hard drop and down movement
+                # 40% chance to choose from actions that place pieces (reduced from 70%)
+                if np.random.random() < 0.4:
+                    # Include soft drop and hard drop with equal probability
                     piece_placing_actions = [2, 5]  # Move Down and Hard Drop
                     return np.random.choice(piece_placing_actions)
                 return np.random.randint(self.action_dim)
@@ -213,22 +213,12 @@ class DQNAgent:
             if self.top_k > 1:
                 # Get top-k actions
                 top_k_values, top_k_indices = torch.topk(q_values[0], self.top_k)
-                
-                # Ensure at least one piece-placing action is in top-k
-                piece_placing_actions = torch.tensor([2, 5], device=self.device)  # Move Down and Hard Drop
-                if not any(action in top_k_indices for action in piece_placing_actions):
-                    # Replace the lowest value action with hard drop
-                    top_k_indices[-1] = torch.tensor(5, device=self.device)
-                
-                # Randomly select from top-k actions
+                # Randomly select from top-k actions without forcing piece placement
                 selected_idx = np.random.randint(self.top_k)
                 return top_k_indices[selected_idx].item()
             else:
-                # If top_k=1, use hard drop if it's close to best action
-                best_action = q_values.argmax().item()
-                if best_action not in [2, 5] and q_values[0][5] > q_values[0][best_action] * 0.8:
-                    return 5
-                return best_action
+                # Simply return the best action without hard drop bias
+                return q_values.argmax().item()
     
     def update_epsilon(self):
         """Update exploration rate"""
