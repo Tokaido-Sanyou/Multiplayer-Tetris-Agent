@@ -1,6 +1,6 @@
 # Multiplayer Tetris Agent - Hierarchical Reinforcement Learning System
 
-A sophisticated multi-agent reinforcement learning system for Tetris that implements a 6-phase hierarchical training pipeline with goal-conditioned policies, state models, and future reward prediction.
+A sophisticated multi-agent reinforcement learning system for Tetris that implements a 6-phase hierarchical training pipeline with goal-conditioned policies, Random Network Distillation (RND) exploration, and adaptive reward systems.
 
 ## 🎯 System Overview
 
@@ -8,16 +8,19 @@ This project implements a state-of-the-art hierarchical RL system for Tetris usi
 - **State Model**: Predicts optimal piece placements from current game states
 - **Goal-Conditioned Actor-Critic**: Uses state model outputs as goals for action selection
 - **Future Reward Predictor**: Estimates long-term value of terminal block placements
-- **Exploration Actor**: Systematically discovers terminal state rewards
+- **RND Exploration**: Random Network Distillation for curiosity-driven exploration
+- **Adaptive Reward System**: Piece presence rewards that decay over training
 - **Unified Training Pipeline**: 6-phase algorithm for robust learning
 
 ### Key Features
 - ✅ **Goal-Conditioned Learning**: State model outputs directly feed as goals to the actor
-- ✅ **Terminal State Focus**: Explorer only reports terminal placement states
+- ✅ **RND Exploration**: Curiosity-driven exploration using Random Network Distillation
+- ✅ **Adaptive Piece Presence Rewards**: Rewards decrease from 1.0 to 0.0 over first half of training
 - ✅ **Consistent Network Parameters**: Centralized configuration across all components
 - ✅ **Lines Cleared Tracking**: Episode-by-episode performance monitoring
 - ✅ **Blended Reward Prediction**: Future reward predictor integrates with state model
 - ✅ **Extended Training**: 1000 total episodes across 50 batches
+- ✅ **Updated Feature Weights**: Reduced penalty weights for more balanced learning
 
 ## 🏗️ Architecture
 
@@ -91,43 +94,73 @@ Outputs:
   - Future value (1 value)
 ```
 
+### 4. NEW: Random Network Distillation (RND)
+**Purpose**: Provides intrinsic motivation for curiosity-driven exploration
+
+#### Random Target Network (Fixed)
+```python
+Input: State vector (410D)
+Architecture: 410 → 512 → 256 → 128 → 64
+Parameters: Frozen (never trained)
+Output: Fixed random features (64D)
+```
+
+#### Predictor Network (Trainable)
+```python
+Input: State vector (410D)
+Architecture: 410 → 512 → 256 → 128 → 64 (with dropout)
+Parameters: Trainable
+Output: Predicted features (64D)
+Loss: MSE(predicted_features, target_features)
+```
+
+#### Intrinsic Reward Calculation
+```python
+prediction_error = MSE(predictor_output, target_output)
+intrinsic_reward = normalize(prediction_error)  # Running statistics
+exploration_bonus = intrinsic_reward * scale_factor
+```
+
 ## 🔄 6-Phase Training Algorithm
 
-### Phase 1: Exploration Data Collection
-- **Exploration Actor** systematically tries piece placements
-- Records **ONLY terminal states** (final placement outcomes)
-- Generates 2-4 terminal placement simulations per game step
-- Collects (state, placement, terminal_reward, resulting_state) tuples
+### Phase 1: RND-Driven Exploration Data Collection
+- **RND Exploration Actor** uses Random Network Distillation for curiosity-driven exploration
+- **Intrinsic Motivation**: Prediction error on random network provides exploration signal
+- Records **ONLY terminal states** (final placement outcomes) with intrinsic rewards
+- Generates 2-6 terminal placement simulations per game step (scaled by intrinsic reward)
+- Collects (state, placement, terminal_reward, resulting_state, intrinsic_reward) tuples
+- **Adaptive Exploration**: High intrinsic reward → more diverse placements, low → conservative
 
 ### Phase 2: State Model Learning
-- Trains state model on terminal placement data
+- Trains state model on terminal placement data with intrinsic motivation
 - Learns to predict optimal rotations and positions
-- Uses terminal rewards to weight training importance
+- Uses terminal rewards + intrinsic rewards to weight training importance
 - Outputs confidence scores for placement quality
 
 ### Phase 3: Future Reward Prediction
 - Trains future reward predictor on terminal placements
 - Learns to estimate long-term consequences
-- Blends predictions with state model values
-- Focuses on terminal state value estimation
+- Blends predictions with state model values using confidence weighting
+- Focuses on terminal state value estimation with RND-enhanced data
 
-### Phase 4: Exploitation Episodes  
-- **Goal-Conditioned Policy Rollouts**
+### Phase 4: Goal-Conditioned Exploitation Episodes  
+- **Goal-Conditioned Policy Rollouts** with adaptive piece presence rewards
 - State model generates optimal placement goals
 - Actor-critic uses goals for action selection
+- **Piece Presence Rewards**: Start at 1.0 per piece, decay to 0.0 over first 500 episodes
 - Tracks lines cleared, rewards, and episode length
 - Collects experience for policy improvement
 
 ### Phase 5: PPO Training
-- Trains actor-critic with PPO clipping
+- Trains actor-critic with PPO clipping using enhanced rewards
 - Incorporates auxiliary state model loss
 - Updates both policy and value functions
-- Uses prioritized experience replay
+- Uses prioritized experience replay with RND-enhanced data
 
 ### Phase 6: Evaluation
-- Pure exploitation episodes (ε = 0)
-- Measures policy performance
-- Tracks improvement over training
+- Pure exploitation episodes (ε = 0) with piece presence rewards
+- Measures policy performance with adaptive reward system
+- Tracks improvement over training with RND statistics
 
 ## 🎯 Reward Function Design
 
@@ -147,14 +180,41 @@ GAME_OVER_PENALTY = -200     # Heavy penalty for losing
 TIME_PENALTY = -0.01         # Small penalty per step
 ```
 
-### Feature-Based Shaping
+### Feature-Based Shaping (UPDATED WEIGHTS)
 ```python
-# Height and structure penalties
-HOLE_WEIGHT = 4.0           # Penalty per hole created
-MAX_HEIGHT_WEIGHT = 10.0    # Penalty for tall stacks
-BUMPINESS_WEIGHT = 1.0      # Penalty for uneven surface
+# Reduced penalty weights for more balanced learning
+HOLE_WEIGHT = 0.5           # Penalty per hole created (reduced from 4.0)
+MAX_HEIGHT_WEIGHT = 5.0     # Penalty for tall stacks (reduced from 10.0)
+BUMPINESS_WEIGHT = 0.2      # Penalty for uneven surface (reduced from 1.0)
+```
 
-# Exploration rewards (terminal placement evaluation)
+### NEW: Adaptive Piece Presence Reward System
+```python
+# Encourages longer games early in training, phases out as agent improves
+PIECE_PRESENCE_REWARD = 1.0        # Base reward per piece on board
+PIECE_PRESENCE_DECAY_STEPS = 500   # Decay over first 500 episodes (first half)
+PIECE_PRESENCE_MIN = 0.0           # No reward after episode 500
+
+# Calculation:
+# Episodes 0-500: reward = (1.0 - episode/500) * pieces_on_board
+# Episodes 500+:  reward = 0.0
+```
+
+### RND Intrinsic Motivation
+```python
+# Random Network Distillation parameters
+INTRINSIC_REWARD_SCALE = 10.0      # Scale factor for intrinsic rewards
+RND_LEARNING_RATE = 1e-4           # Learning rate for predictor network
+REWARD_NORMALIZATION = True        # Normalize intrinsic rewards
+REWARD_CLIPPING = [-5.0, 5.0]      # Clip normalized rewards
+
+# Exploration guidance:
+# High prediction error → diverse exploration
+# Low prediction error → conservative exploitation  
+```
+
+### Exploration rewards (terminal placement evaluation)
+```python
 EXPLORATION_MAX_HEIGHT_WEIGHT = -0.5   # Negative for height
 EXPLORATION_HOLE_WEIGHT = -10.0        # Heavy hole penalty  
 EXPLORATION_BUMPINESS_WEIGHT = -0.1    # Surface smoothness
@@ -228,33 +288,45 @@ python -m localMultiplayerTetris.rl_utils.unified_trainer \
 tensorboard --logdir logs/unified_training
 
 # Available metrics:
-# - Exploration: Terminal rewards, placement success rates
+# - Exploration: Terminal rewards, placement success rates, RND intrinsic rewards
 # - StateModel: Training losses, auxiliary losses  
 # - RewardPredictor: Prediction accuracy, loss trends
-# - Exploitation: Episode rewards, steps, lines cleared
+# - Exploitation: Episode rewards, steps, lines cleared, piece presence rewards
 # - PPO: Actor/critic losses, training efficiency
 # - Evaluation: Pure policy performance
+# - RND: Intrinsic rewards, prediction errors, exploration diversity
 ```
 
 ## 📈 Key Metrics Tracked
 
 ### Episode-Level Metrics
-- **Episode Reward**: Total reward accumulated
+- **Episode Reward**: Total reward accumulated (includes piece presence + intrinsic rewards)
 - **Episode Steps**: Number of actions taken
 - **Lines Cleared**: Tetris lines completed (primary success metric)
 - **Episode Length**: Game duration
+- **NEW: Piece Presence Reward**: Adaptive reward based on pieces on board
+- **NEW: Piece Presence Decay Factor**: Current decay multiplier (1.0 → 0.0 over 500 episodes)
+
+### RND Exploration Metrics
+- **Intrinsic Reward**: Curiosity-driven exploration bonus from prediction error
+- **Prediction Error**: MSE between predictor and target network outputs
+- **Exploration Diversity**: Variance in intrinsic rewards across states
+- **RND Training Loss**: Predictor network learning progress
+- **Exploration/Exploitation Balance**: Proportion of high vs low intrinsic reward states
 
 ### Training Metrics  
 - **State Model Losses**: Rotation, position, and value prediction accuracy
-- **Reward Predictor**: Terminal placement value estimation
-- **Actor-Critic**: Policy gradient and value function losses
+- **Reward Predictor**: Terminal placement value estimation with RND enhancement
+- **Actor-Critic**: Policy gradient and value function losses with enhanced rewards
 - **Auxiliary Losses**: Joint state model training during policy learning
+- **RND Predictor Loss**: Training progress of curiosity network
 
 ### Performance Trends
-- **Batch Averages**: Mean performance across episodes
-- **Success Rates**: Fraction of high-reward placements
+- **Batch Averages**: Mean performance across episodes with adaptive rewards
+- **Success Rates**: Fraction of high-reward placements (intrinsic + extrinsic)
 - **Training Efficiency**: Successful optimization iterations
 - **Confidence Scores**: State model placement certainty
+- **Exploration Effectiveness**: RND-driven discovery rate of novel states
 
 ## 🔧 Customization
 
@@ -275,8 +347,25 @@ class NetworkConfig:
 ```python
 class RewardConfig:
     LINE_CLEAR_BASE = {1: 200, 2: 500, 3: 800, 4: 2000}  # Higher rewards
-    HOLE_WEIGHT = 8.0                                      # Stronger penalty
+    HOLE_WEIGHT = 0.2                                      # Even lighter penalty
+    MAX_HEIGHT_WEIGHT = 3.0                                # Reduced height penalty
+    BUMPINESS_WEIGHT = 0.1                                 # Minimal bumpiness penalty
     GAME_OVER_PENALTY = -500                               # Harsher penalty
+    
+    # NEW: Piece presence reward customization
+    PIECE_PRESENCE_REWARD = 2.0                            # Higher base reward
+    PIECE_PRESENCE_DECAY_STEPS = 750                       # Extend decay period
+    PIECE_PRESENCE_MIN = 0.5                               # Minimum reward floor
+```
+
+### RND Exploration Parameters
+```python
+class RNDConfig:
+    INTRINSIC_REWARD_SCALE = 20.0                          # Stronger curiosity signal
+    RND_LEARNING_RATE = 5e-4                               # Faster predictor learning
+    REWARD_CLIPPING = [-10.0, 10.0]                        # Wider reward range
+    STATE_BUFFER_SIZE = 20000                              # Larger experience buffer
+    PREDICTOR_DROPOUT = 0.2                                # Higher dropout for regularization
 ```
 
 ### Training Schedule

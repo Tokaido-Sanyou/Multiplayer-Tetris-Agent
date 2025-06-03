@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 try:
     from ..tetris_env import TetrisEnv
     from ..config import TetrisConfig  # Import centralized config
-    from .exploration_actor import ExplorationActor
+    from .rnd_exploration import RNDExplorationActor  # NEW: Use RND exploration
     from .state_model import StateModel
     from .actor_critic import ActorCriticAgent
     from .future_reward_predictor import FutureRewardPredictor
@@ -25,7 +25,7 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from tetris_env import TetrisEnv
     from config import TetrisConfig  # Import centralized config
-    from rl_utils.exploration_actor import ExplorationActor
+    from rl_utils.rnd_exploration import RNDExplorationActor  # NEW: Use RND exploration
     from rl_utils.state_model import StateModel
     from rl_utils.actor_critic import ActorCriticAgent
     from rl_utils.future_reward_predictor import FutureRewardPredictor
@@ -59,7 +59,7 @@ class UnifiedTrainer:
         )
         
         # Initialize exploration actor
-        self.exploration_actor = ExplorationActor(self.env)
+        self.exploration_actor = RNDExplorationActor(self.env)
         
         # Initialize optimizers
         self.state_optimizer = torch.optim.Adam(self.state_model.parameters(), lr=config.state_lr)
@@ -75,6 +75,9 @@ class UnifiedTrainer:
         # Episode tracking
         self.episode_lines_cleared = []  # Track lines cleared per episode
         self.current_episode_lines = 0  # Lines cleared in current episode
+        
+        # NEW: Piece presence reward tracking
+        self.total_episodes_completed = 0  # Track total episodes for piece presence decay
         
         # Data storage
         self.exploration_data = []
@@ -143,6 +146,16 @@ class UnifiedTrainer:
             self.writer.add_scalar('Exploration/MinTerminalReward', np.min(rewards), batch)
             self.writer.add_scalar('Exploration/NumPlacements', len(placement_data), batch)
             
+            # NEW: RND-specific statistics
+            intrinsic_rewards = [d.get('intrinsic_reward', 0) for d in placement_data]
+            prediction_errors = [d.get('prediction_error', 0) for d in placement_data]
+            
+            if intrinsic_rewards and any(r != 0 for r in intrinsic_rewards):
+                self.writer.add_scalar('Exploration/AvgIntrinsicReward', np.mean(intrinsic_rewards), batch)
+                self.writer.add_scalar('Exploration/StdIntrinsicReward', np.std(intrinsic_rewards), batch)
+                self.writer.add_scalar('Exploration/AvgPredictionError', np.mean(prediction_errors), batch)
+                self.writer.add_scalar('Exploration/StdPredictionError', np.std(prediction_errors), batch)
+            
             # Reward distribution
             positive_rewards = [r for r in rewards if r > 0]
             negative_rewards = [r for r in rewards if r <= 0]
@@ -154,7 +167,14 @@ class UnifiedTrainer:
             high_reward_threshold = -50  # Adjust based on reward scale
             successful_placements = [r for r in rewards if r > high_reward_threshold]
             self.writer.add_scalar('Exploration/SuccessfulPlacementRate', len(successful_placements) / len(rewards), batch)
-            logging.info(f"Collected {len(placement_data)} placements, avg reward: {np.mean(rewards):.3f}, success rate: {len(successful_placements)/len(rewards):.2%}")
+            
+            # NEW: Log RND exploration effectiveness
+            if intrinsic_rewards:
+                avg_intrinsic = np.mean(intrinsic_rewards)
+                logging.info(f"Collected {len(placement_data)} placements, avg reward: {np.mean(rewards):.3f}, "
+                          f"avg intrinsic: {avg_intrinsic:.3f}, success rate: {len(successful_placements)/len(rewards):.2%}")
+            else:
+                logging.info(f"Collected {len(placement_data)} placements, avg reward: {np.mean(rewards):.3f}, success rate: {len(successful_placements)/len(rewards):.2%}")
     
     def phase_2_state_learning(self, batch):
         """
@@ -267,17 +287,21 @@ class UnifiedTrainer:
                 next_obs, reward, done, info = self.env.step(action)
                 next_state = self._obs_to_state_vector(next_obs)
                 
+                # NEW: Add piece presence reward
+                piece_presence_reward = self.calculate_piece_presence_reward(obs)
+                total_reward = reward + piece_presence_reward
+                
                 # Track lines cleared from info
                 if info and 'lines_cleared' in info:
                     episode_lines += info['lines_cleared']
                 
-                # Store experience
+                # Store experience with enhanced reward
                 self.experience_buffer.push(
-                    obs, action, reward, next_obs, done, info
+                    obs, action, total_reward, next_obs, done, info
                 )
                 
                 obs = next_obs
-                episode_reward += reward
+                episode_reward += total_reward  # Use enhanced reward
                 steps += 1
                 
                 if visualize_this_episode:
@@ -302,10 +326,26 @@ class UnifiedTrainer:
             total_steps += steps
             self.episode_count += 1
             
+            # NEW: Update total episodes completed for piece presence decay
+            self.total_episodes_completed += 1
+            
             # Log individual episode statistics
             self.writer.add_scalar('Exploitation/EpisodeReward', episode_reward, self.episode_count)
             self.writer.add_scalar('Exploitation/EpisodeSteps', steps, self.episode_count)
             self.writer.add_scalar('Exploitation/EpisodeLinesCleared', episode_lines, self.episode_count)
+            
+            # NEW: Log piece presence reward and decay
+            final_piece_reward = self.calculate_piece_presence_reward(next_obs if 'next_obs' in locals() else obs)
+            self.writer.add_scalar('Exploitation/PiecePresenceReward', final_piece_reward, self.episode_count)
+            
+            # Calculate and log current decay factor
+            config = self.tetris_config.RewardConfig
+            max_episodes = config.PIECE_PRESENCE_DECAY_STEPS
+            if self.total_episodes_completed < max_episodes:
+                decay_factor = 1.0 - (self.total_episodes_completed / max_episodes)
+            else:
+                decay_factor = 0.0
+            self.writer.add_scalar('Exploitation/PiecePresenceDecayFactor', decay_factor, self.episode_count)
         
         # Log batch statistics
         avg_reward = total_reward / self.config.exploitation_episodes
@@ -477,6 +517,43 @@ class UnifiedTrainer:
         checkpoint_path = os.path.join(self.config.checkpoint_dir, f'checkpoint_batch_{batch}.pt')
         torch.save(checkpoint, checkpoint_path)
         logging.info(f"Saved checkpoint: {checkpoint_path}")
+
+    def calculate_piece_presence_reward(self, obs):
+        """
+        Calculate piece presence reward that decreases over the first half of training
+        Args:
+            obs: Current observation dict
+        Returns:
+            piece_presence_reward: Float reward based on pieces on board
+        """
+        config = self.tetris_config.RewardConfig
+        
+        # Calculate decay factor based on total episodes completed
+        max_episodes = config.PIECE_PRESENCE_DECAY_STEPS  # 500 episodes (first half)
+        if self.total_episodes_completed >= max_episodes:
+            return config.PIECE_PRESENCE_MIN  # 0.0 after first half
+        
+        # Linear decay from 1.0 to 0.0 over first 500 episodes
+        decay_factor = 1.0 - (self.total_episodes_completed / max_episodes)
+        current_reward_per_piece = config.PIECE_PRESENCE_REWARD * decay_factor
+        
+        # Count pieces on the board
+        # Use current_piece_grid and empty_grid to count total occupied cells
+        current_piece_cells = np.sum(obs['current_piece_grid'] > 0)
+        
+        # Estimate placed pieces from empty grid (inverse of empty spaces)
+        total_grid_cells = obs['empty_grid'].size
+        empty_cells = np.sum(obs['empty_grid'] == 0)  # Empty cells
+        placed_piece_cells = total_grid_cells - empty_cells
+        
+        total_piece_cells = current_piece_cells + placed_piece_cells
+        
+        # Estimate number of pieces (roughly 4 cells per piece)
+        estimated_pieces = max(1, total_piece_cells // 4)
+        
+        piece_presence_reward = estimated_pieces * current_reward_per_piece
+        
+        return piece_presence_reward
 
 class TrainingConfig:
     """Configuration for unified training"""
