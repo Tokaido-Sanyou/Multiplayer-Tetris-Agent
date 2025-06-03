@@ -58,7 +58,7 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
             gamma_start=0.9,
             gamma_end=0.99,
             epsilon_start=1.0,
-            epsilon_end=0.05,
+            epsilon_end=0.01,
             schedule_episodes=num_episodes
         )
         print("Using device:", agent.device)

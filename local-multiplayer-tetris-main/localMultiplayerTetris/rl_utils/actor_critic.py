@@ -144,13 +144,16 @@ class ActorCriticAgent:
         self.gamma_end = gamma_end
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
-        self.schedule_episodes = schedule_episodes
+        self.schedule_episodes = schedule_episodes  # total training episodes
+        # Episodes over which ε decays to ε_end (first half of training)
+        self._eps_decay_episodes = max(1, schedule_episodes // 2)
         # Pre-compute exponential decay rate so that epsilon reaches (approximately) epsilon_end
         # after `schedule_episodes` updates: epsilon_t = epsilon_start * decay_rate^t.
         # decay_rate = (epsilon_end / epsilon_start)^(1 / schedule_episodes)
         # Handle edge-cases where values could be equal or zero.
         if epsilon_start > 0 and epsilon_end > 0 and epsilon_end < epsilon_start:
-            self._eps_decay_rate = (epsilon_end / epsilon_start) ** (1.0 / schedule_episodes)
+            # Decay only during the first half
+            self._eps_decay_rate = (epsilon_end / epsilon_start) ** (1.0 / self._eps_decay_episodes)
         else:
             # Fallback to a default mild decay if parameters are degenerate
             self._eps_decay_rate = 0.995
@@ -284,8 +287,12 @@ class ActorCriticAgent:
         """Update epsilon and gamma schedules based on total completed episodes."""
         # --- Exponential epsilon decay ---
         # ε_t = max(ε_end, ε_start * decay_rate^t)
-        self.epsilon = max(self.epsilon_end,
-                           self.epsilon_start * (self._eps_decay_rate ** total_completed_episodes))
+        if total_completed_episodes >= self._eps_decay_episodes:
+            # second half: fixed at minimum
+            self.epsilon = self.epsilon_end
+        else:
+            self.epsilon = max(self.epsilon_end,
+                               self.epsilon_start * (self._eps_decay_rate ** total_completed_episodes))
         
         # --- (Optional) linear gamma schedule preserved ---
         frac = min(1.0, total_completed_episodes / self.schedule_episodes)
