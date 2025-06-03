@@ -378,3 +378,37 @@ class ActorCriticAgent:
         self.actor_optimizer.step()
         # return losses: (actor_loss, critic_loss)
         return actor_loss.item(), critic_loss.item()
+
+    # ---------------- Persistence helpers ---------------- #
+    def save(self, filepath: str):
+        """Save model and optimizer states to a checkpoint file.
+
+        Args:
+            filepath (str): Path to the .pt/.pth file to save.
+        """
+        checkpoint = {
+            'network': self.network.state_dict(),
+            'actor_optimizer': self.actor_optimizer.state_dict(),
+            'critic_optimizer': self.critic_optimizer.state_dict(),
+            'epsilon': self.epsilon,
+            'gamma': self.gamma,
+            'episode': self.current_episode
+        }
+        torch.save(checkpoint, filepath)
+
+    def load(self, filepath: str, map_location: str | torch.device | None = None):
+        """Load model and optimizer states from a checkpoint file.
+
+        Args:
+            filepath (str): Path to checkpoint file.
+            map_location: Optional device mapping for torch.load.
+        """
+        checkpoint = torch.load(filepath, map_location=map_location or self.device)
+        self.network.load_state_dict(checkpoint['network'])
+        if 'actor_optimizer' in checkpoint and checkpoint['actor_optimizer']:
+            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+        if 'critic_optimizer' in checkpoint and checkpoint['critic_optimizer']:
+            self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        self.epsilon = checkpoint.get('epsilon', self.epsilon)
+        self.gamma = checkpoint.get('gamma', self.gamma)
+        self.current_episode = checkpoint.get('episode', self.current_episode)
