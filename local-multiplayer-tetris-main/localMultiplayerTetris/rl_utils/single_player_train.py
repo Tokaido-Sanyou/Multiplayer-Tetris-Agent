@@ -9,6 +9,7 @@ import pygame
 import cProfile
 import pstats
 import sys
+import os
 import argparse
 from torch.utils.tensorboard import SummaryWriter
 
@@ -42,7 +43,7 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
         env = TetrisEnv(single_player=True, headless=not visualize)
         
         # Create agent
-        state_dim = 202  # 20x10 grid + next_piece + hold_piece scalars
+        state_dim = 206  # 20x10 grid + next_piece + hold_piece + current_shape + current_rotation + current_x + current_y
         action_dim = 8   # 8 possible actions, including no-op (ID 7)
         agent = ActorCriticAgent(
             state_dim,
@@ -78,7 +79,7 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
             episode_pieces_placed = 0
             try:
                 # Initialize observation and state
-                obs = env.reset()
+                obs, _ = env.reset()  # Unpack the (obs, info) tuple
                 state = preprocess_state(obs)
                 done = False
                 episode_reward = 0
@@ -94,7 +95,8 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                     try:
                         # Select and perform action
                         action = agent.select_action(state)
-                        next_obs, reward, done, info = env.step(action)
+                        next_obs, reward, terminated, truncated, info = env.step(action)
+                        done = terminated or truncated
                         next_state = preprocess_state(next_obs)
                         
                         # Render if visualization enabled
@@ -109,7 +111,7 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                         episode_max_level = max(episode_max_level, info.get('level', 0))
                         episode_pieces_placed += int(info.get('piece_placed', False))
                         
-                        # Store transition in replay buffer (use raw observation dict)
+                        # Store transition in replay buffer (use raw observation dictionaries)
                         agent.memory.push(obs, action, reward, next_obs, done, info)
                         
                         # Train agent
@@ -153,31 +155,47 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                 
                 # Log episode summary
                 logging.info(f"Episode {episode + 1}/{num_episodes}")
-                logging.info(f"Player 1 Reward: {episode_reward:.2f}")
-                logging.info(f"Length: {episode_length}")
-                logging.info(f"Lines Cleared: {episode_lines_cleared}")
+                logging.info(f"Reward: {episode_reward:.2f}")
                 logging.info(f"Score: {episode_score}")
-                logging.info(f"Pieces Placed: {episode_pieces_placed}")
+                logging.info(f"Lines Cleared: {episode_lines_cleared}")
                 logging.info(f"Max Level: {episode_max_level}")
+                logging.info(f"Episode Length: {episode_length}")
+                logging.info(f"Pieces Placed: {episode_pieces_placed}")
                 logging.info(f"Epsilon: {agent.epsilon:.3f}")
+                logging.info(f"Gamma: {agent.gamma:.3f}")
                 if train_steps > 0:
                     logging.info(f"Actor Loss: {episode_actor_loss:.4f}")
                     logging.info(f"Critic Loss: {episode_critic_loss:.4f}")
                 logging.info("")
                 
                 # Log to TensorBoard
-                writer.add_scalar('Train/Reward', episode_reward, episode+1)
-                writer.add_scalar('Train/Length', episode_length, episode+1)
-                writer.add_scalar('Train/Lines', episode_lines_cleared, episode+1)
-                writer.add_scalar('Train/Score', episode_score, episode+1)
-                writer.add_scalar('Train/PiecesPlaced', episode_pieces_placed, episode+1)
-                writer.add_scalar('Train/MaxLevel', episode_max_level, episode+1)
-                writer.add_scalar('Train/Epsilon', agent.epsilon, episode+1)
+                writer.add_scalar('Episode/Reward', episode_reward, episode + 1)
+                writer.add_scalar('Episode/Score', episode_score, episode + 1)
+                writer.add_scalar('Episode/Lines', episode_lines_cleared, episode + 1)
+                writer.add_scalar('Episode/MaxLevel', episode_max_level, episode + 1)
+                writer.add_scalar('Episode/Length', episode_length, episode + 1)
+                writer.add_scalar('Episode/PiecesPlaced', episode_pieces_placed, episode + 1)
+                writer.add_scalar('Episode/Epsilon', agent.epsilon, episode + 1)
+                writer.add_scalar('Episode/Gamma', agent.gamma, episode + 1)
                 if train_steps > 0:
-                    writer.add_scalar('Train/ActorLoss', episode_actor_loss, episode+1)
-                    writer.add_scalar('Train/CriticLoss', episode_critic_loss, episode+1)
-
-
+                    writer.add_scalar('Loss/Actor', episode_actor_loss, episode + 1)
+                    writer.add_scalar('Loss/Critic', episode_critic_loss, episode + 1)
+                
+                # Print episode summary
+                print(f"Episode {episode + 1}/{num_episodes}")
+                print(f"Reward: {episode_reward:.2f}")
+                print(f"Score: {episode_score}")
+                print(f"Lines Cleared: {episode_lines_cleared}")
+                print(f"Max Level: {episode_max_level}")
+                print(f"Episode Length: {episode_length}")
+                print(f"Pieces Placed: {episode_pieces_placed}")
+                print(f"Epsilon: {agent.epsilon:.3f}")
+                print(f"Gamma: {agent.gamma:.3f}")
+                if train_steps > 0:
+                    print(f"Actor Loss: {episode_actor_loss:.4f}")
+                    print(f"Critic Loss: {episode_critic_loss:.4f}")
+                print()
+                
                 # Save model checkpoint
                 if (episode + 1) % save_interval == 0:
                     try:
@@ -186,12 +204,12 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                     except Exception as e:
                         logging.error(f"Error saving checkpoint: {str(e)}")
                 
-                # Evaluate agent: record reward, score, and lines statistics
-                if not no_eval and (episode + 1) % eval_interval == 0:
+                # Evaluate agent
+                if (episode + 1) % eval_interval == 0 and not no_eval:
                     try:
+                        logging.info(f"Evaluating agent at episode {episode + 1}...")
                         # evaluate_agent now returns (rewards, scores, lines)
                         eval_rewards, eval_scores, eval_lines = evaluate_agent(env, agent)
-                        # compute metrics
                         r_avg, r_std, r_max = np.mean(eval_rewards), np.std(eval_rewards), np.max(eval_rewards)
                         s_avg, s_std, s_max = np.mean(eval_scores), np.std(eval_scores), np.max(eval_scores)
                         l_max = np.max(eval_lines)

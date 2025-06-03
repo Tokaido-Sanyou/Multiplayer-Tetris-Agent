@@ -53,29 +53,20 @@ class SharedFeatureExtractor(nn.Module):
 class ActorCritic(nn.Module):
     """
     Actor-Critic network for Tetris
-    
-    State Space (from tetris_env.py):
-    - Grid: 20x10 matrix (0 for empty, 1-7 for different piece colors)
-    - Current piece: 4x4 matrix (0 for empty, 1 for filled)
-    - Next piece: 4x4 matrix (0 for empty, 1 for filled)
-    - Hold piece: 4x4 matrix (0 for empty, 1 for filled)
-    
-    Action Space (from tetris_env.py):
-    - 0: Move Left
-    - 1: Move Right
-    - 2: Move Down
-    - 3: Rotate Clockwise
-    - 4: Rotate Counter-clockwise
-    - 5: Hard Drop
-    - 6: Hold Piece
-    - 7: No-op
+
+    State Space:
+    - Grid, next_piece, hold_piece, current_shape, rotation, x, y
+
+    Action Space:
+    - Flattened placement index = rotation*10 + column (rot∈[0-3], col∈[0-9])
+    - 4 rotations × 10 columns = 40 actions
     """
     def __init__(self, input_dim, output_dim):
         """
         Initialize Actor-Critic network
         Args:
             input_dim: Dimension of input state (202)
-            output_dim: Number of possible actions (8)
+            output_dim: Number of possible actions (40)
         """
         super(ActorCritic, self).__init__()
         
@@ -94,7 +85,7 @@ class ActorCritic(nn.Module):
             nn.ReLU(),
             nn.Linear(256, 64),
             nn.ReLU(),
-            nn.Linear(64, 8),
+            nn.Linear(64, output_dim),
             nn.Softmax(dim=-1)
         )
         self.critic = nn.Sequential(
@@ -136,7 +127,7 @@ class ActorCriticAgent:
         Initialize Actor-Critic agent
         Args:
             state_dim: Dimension of state space (202)
-            action_dim: Number of possible actions (8)
+            action_dim: Number of possible actions (40)
             actor_lr: Learning rate for actor
             critic_lr: Learning rate for critic
             gamma_start: Starting discount factor (e.g., 0.9)
@@ -181,7 +172,7 @@ class ActorCriticAgent:
         self.batch_size = 64
         self.gradient_clip = 1.0
     
-    def select_action(self, state):  # returns integer in [0,7]
+    def select_action(self, state):  # returns integer in [0,39]
         """
         Select action using epsilon-greedy policy
         Args:
@@ -191,7 +182,7 @@ class ActorCriticAgent:
                 - next_piece: 4x4 matrix of next piece
                 - hold_piece: 4x4 matrix of hold piece
         Returns:
-            Integer (0-7) representing the selected action
+            Integer (0-39) representing the selected action
         """
         # Throttle actor to at least 50 ms per action
         start = time.perf_counter()

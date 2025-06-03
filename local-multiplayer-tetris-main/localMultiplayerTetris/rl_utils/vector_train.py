@@ -159,7 +159,8 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
     # For ActorCriticAgent, state_dim is the flattened obs, action_dim is discrete
     # state_dim = 200 (grid) + 6 (metadata) = 206
     state_dim = 206 
-    action_dim = envs.action_space[0].n # Should be 8 for TetrisEnv
+    # 4 rotations × 10 columns = 40 flattened placement actions
+    action_dim = 4 * 10
 
     agent = ActorCriticAgent(
         state_dim,
@@ -221,11 +222,16 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
         # Select actions for the batch
         actions = agent.select_actions_batch(current_states_batch_tensor) # Expects batched tensor
 
+        # decode flattened actions into (rotation, column) pairs for MultiDiscrete
+        rot = actions // 10
+        col = actions % 10
+        multi_actions = np.stack([rot, col], axis=1)
+
         # Step in all environments
         # `next_obs_list` is a list of obs dicts
         # `rewards_array`, `dones_array` are numpy arrays of shape (num_envs,)
         # next_batched_obs, rewards_array, dones_array, infos_list = envs.step(actions) # Renamed to next_batched_obs
-        step_result = envs.step(actions)
+        step_result = envs.step(multi_actions)
         # Unpack based on Gym version: 4-tuple or 5-tuple
         if len(step_result) == 4:
             next_batched_obs, rewards_array, dones_array, infos = step_result
@@ -303,6 +309,11 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
                 writer.add_scalar(f'Train/Env{i}/Lines', episode_lines[i], total_episodes_completed)
                 writer.add_scalar(f'Train/Env{i}/Score', episode_scores[i], total_episodes_completed)
                 # Add more scalars as needed
+
+                # Reset the finished environment's state
+                reset_obs_i, _ = envs.envs[i].reset()
+                for key, value in reset_obs_i.items():
+                    current_batched_obs[key][i] = value
 
                 # Reset metrics for this environment
                 episode_rewards[i] = 0
@@ -398,4 +409,3 @@ if __name__ == '__main__':
         no_eval=args.no_eval,
         headless_eval=args.headless_eval
     )
-

@@ -35,16 +35,8 @@ class TetrisEnv(gym.Env):
             # Training headless: disable debug logging to file
             logger.setLevel(logging.WARNING)
         
-        # Action space:
-        # 0: Move Left
-        # 1: Move Right
-        # 2: Move Down
-        # 3: Rotate Clockwise
-        # 4: Rotate Counter-clockwise
-        # 5: Hard Drop
-        # 6: Hold Piece
-        # 7: No-op
-        self.action_space = spaces.Discrete(8)
+        # Action space: rotation (0-3) × column (0-9)
+        self.action_space = spaces.MultiDiscrete([4, 10])
         
         # Define observation space
         # Grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
@@ -219,154 +211,48 @@ class TetrisEnv(gym.Env):
             self.game.player2.block_pool = None
 
     def step(self, action):
-        """Execute one time step within the environment"""
+        """Execute one time step: place current piece at (rotation, x) then drop and lock"""
         self.episode_steps += 1
-        # Track locked positions to compute adjacency reward
+        # decode placement action (supports int or sequence)
+        if isinstance(action, (list, tuple, np.ndarray)):
+            rot, x = int(action[0]), int(action[1])
+        else:
+            idx = int(action)
+            rot, x = divmod(idx, 10)
+        # set piece orientation and column
+        piece = self.player.current_piece
+        piece.rotation = rot
+        piece.x = x
+        # drop until collision (but first ensure spawn placement is valid)
+        grid = create_grid(self.player.locked_positions)
+        # invalid placement: end episode with penalty
+        if not valid_space(piece, grid):
+            obs = self._get_observation()
+            return obs, -10.0, True, False, {'invalid_move': True}
+        while valid_space(piece, grid):
+            piece.y += 1
+        piece.y -= 1
+        # trigger lock on placed piece
+        self.player.change_piece = True
+        # lock piece and compute cleared lines
         prev_locked = set(self.player.locked_positions.keys())
-        new_positions = set()
-        # Debug: log step start
-        logger.debug(
-            f"STEP {self.episode_steps}: Action={action}. Current piece pos=({self.player.current_piece.x},{self.player.current_piece.y}). Locked count={len(self.player.locked_positions)}"
-        )
-
-        piece_placed = False
-        lines_cleared = 0
-
-        # Map action to game action
-        if action == 0:  # Move Left
-            self.player.action_handler.move_left()
-        elif action == 1:  # Move Right
-            self.player.action_handler.move_right()
-        elif action == 2:  # Soft Drop / Move Down
-            prev_y = self.player.current_piece.y
-            self.player.action_handler.move_down()
-            # If unable to move down, lock piece
-            if self.player.current_piece.y == prev_y:
-                # Lock piece after soft drop
-                self.player.change_piece = True
-                lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
-                piece_placed = True
-                # record new locked positions for adjacency
-                new_positions = set(self.player.locked_positions.keys()) - prev_locked
-                # Reset spawn check for new piece
-                self._spawn_checked = False
-                # Immediate game-over if locked blocks above grid
-                if check_lost(self.player.locked_positions):
-                    obs = self._get_observation()
-                    rw = self._get_reward(lines_cleared, True)
-                    info = {'lines_cleared': lines_cleared, 'score': self.player.score,
-                            'level': self.game.level, 'episode_steps': self.episode_steps,
-                            'piece_placed': piece_placed}
-                    return obs, rw, True, info
-                # Debug: log lock and spawn
-                logger.debug(
-                    f"LOCK (soft drop): lines_cleared={lines_cleared}. Next piece shape={self.player.current_piece.shape}, pos=({self.player.current_piece.x},{self.player.current_piece.y})"
-                )
-        elif action == 3:  # Rotate Clockwise
-            self.player.action_handler.rotate_cw()
-        elif action == 4:  # Rotate Counter-clockwise
-            self.player.action_handler.rotate_ccw()
-        elif action == 5:  # Hard Drop
-            self.player.action_handler.hard_drop()
-            # Ensure at least one block on playfield before locking
-            formatted = convert_shape_format(self.player.current_piece)
-            if not any(0 <= y < 20 for _, y in formatted):
-                logging.debug(f"Hard drop invalid placement: formatted_positions={formatted}, locked_positions={self.player.locked_positions}")
-                observation = self._get_observation()
-                reward = self._get_reward(0, True)
-                info = {
-                    'lines_cleared': 0,
-                    'score': self.player.score,
-                    'level': self.game.level,
-                    'episode_steps': self.episode_steps,
-                    'piece_placed': False,
-                    'invalid_placement': True
-                }
-                return observation, reward, True, info
-            lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
-            piece_placed = True
-            # record new locked positions for adjacency
-            new_positions = set(self.player.locked_positions.keys()) - prev_locked
-            # Debug: log lock and spawn (hard drop)
-            logger.debug(
-                f"LOCK (hard drop): lines_cleared={lines_cleared}. Next piece shape={self.player.current_piece.shape}, pos=({self.player.current_piece.x},{self.player.current_piece.y})"
-            )
-            # Immediate game-over if locked blocks above grid
-            if check_lost(self.player.locked_positions):
-                logging.debug("Game over after hard drop: locked above visible grid detected")
-                obs = self._get_observation()
-                rw = self._get_reward(lines_cleared, True)
-                info = {'lines_cleared': lines_cleared, 'score': self.player.score,
-                        'level': self.game.level, 'episode_steps': self.episode_steps,
-                        'piece_placed': piece_placed}
-                return obs, rw, True, info
-        # Gravity: drop every gravity_interval agent steps (skip after hard drop)
-        if action != 5 and self.episode_steps % self.gravity_interval == 0:
-            prev_y = self.player.current_piece.y
-            self.player.action_handler.move_down()
-            if self.player.current_piece.y == prev_y:
-                # Stuck: check spawn collision if still above grid
-                formatted = convert_shape_format(self.player.current_piece)
-                if all(y < 0 for _, y in formatted):
-                    logging.debug(f"Gravity spawn collision detected: formatted_positions={formatted}, locked_positions={self.player.locked_positions}")
-                    obs = self._get_observation()
-                    rw = self._get_reward(0, True)
-                    info = {'lines_cleared': 0,
-                            'score': self.player.score,
-                            'level': self.game.level,
-                            'episode_steps': self.episode_steps,
-                            'piece_placed': False,
-                            'spawn_collision': True}
-                    return obs, rw, True, info
-                # Normal lock
-                self.player.change_piece = True
-                lines_cleared += self.player.update(self.game.fall_speed, self.game.level)
-                piece_placed = True
-                # record new locked positions for adjacency
-                new_positions = set(self.player.locked_positions.keys()) - prev_locked
-                # Debug: log lock and spawn (gravity)
-                logger.debug(
-                    f"LOCK (gravity): lines_cleared={lines_cleared}. Next piece shape={self.player.current_piece.shape}, pos=({self.player.current_piece.x},{self.player.current_piece.y})"
-                )
-                # Check if any locked block is above grid
-                if check_lost(self.player.locked_positions):
-                    logging.debug("Game over after gravity lock: locked above visible grid detected")
-                    obs = self._get_observation()
-                    rw = self._get_reward(lines_cleared, True)
-                    info = {'lines_cleared': lines_cleared, 'score': self.player.score,
-                            'level': self.game.level, 'episode_steps': self.episode_steps,
-                            'piece_placed': piece_placed}
-                    return obs, rw, True, info
-        
-        # Ensure single player mode is maintained
-        self._ensure_single_player_mode()
-        
+        lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
+        new_positions = set(self.player.locked_positions.keys()) - prev_locked
+        # episode termination/truncation
         game_over = check_lost(self.player.locked_positions)
-        
-        # Get observation
-        observation = self._get_observation()
-        
-        # Calculate reward
+        terminated = game_over
+        truncated = (self.episode_steps >= self.max_steps)
+        # observe and reward
+        obs = self._get_observation()
         reward = self._get_reward(lines_cleared, game_over, new_positions)
-        
-        # Check if episode is done on game over or max steps reached
-        # done = game_over or (self.episode_steps >= self.max_steps)
-        terminated = game_over  # Episode ends if game is over
-        truncated = (self.episode_steps >= self.max_steps) # Episode truncates if max steps reached
-        
-        # Additional info
         info = {
             'lines_cleared': lines_cleared,
             'score': self.player.score,
             'level': self.game.level,
             'episode_steps': self.episode_steps,
-            'piece_placed': piece_placed
+            'piece_placed': True
         }
-        
-        #time.sleep(0.05)  # Each environment step takes 200ms
-        
-        # return observation, reward, done, info
-        return observation, reward, terminated, truncated, info
+        return obs, reward, terminated, truncated, info
     
     def reset(self):
         """Reset the environment to initial state"""
