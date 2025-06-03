@@ -7,6 +7,8 @@ from gym.vector import AsyncVectorEnv, SyncVectorEnv # Or SyncVectorEnv
 from ..tetris_env import TetrisEnv
 from .actor_critic import ActorCriticAgent
 from .replay_buffer import ReplayBuffer # Assuming preprocess_state is here or accessible
+import gym
+from gym import spaces
 
 # Attempt to log script entry immediately
 logging.basicConfig(
@@ -21,16 +23,27 @@ logger = logging.getLogger(__name__)
 logger.debug("vector_train.py: Script execution started.")
 
 def _sanitize_space_random(space):
-    """Remove or reset np_random attribute from a gym Space to avoid deepcopy issues
-    when SyncVectorEnv batches observation spaces. Gym <0.27 deepcopies the
-    space which fails for numpy Generator objects.
+    """Recursively clear the ``np_random`` attribute from any Gym ``Space``.
+
+    Older versions of Gym deep-copy observation/action spaces inside
+    ``SyncVectorEnv``; if a space holds a *NumPy* ``Generator`` (PCG64) in its
+    ``np_random`` attribute the deepcopy fails on some platforms (seen on
+    Colab).  Clearing the attribute (or replacing with *None*) avoids the
+    serialization.
     """
     if hasattr(space, "np_random"):
         try:
-            # Setting to None is enough; it will be re-created on first use.
             space.np_random = None
         except Exception:
             pass
+
+    # Recurse into composite spaces
+    if isinstance(space, spaces.Dict):
+        for sub in space.spaces.values():
+            _sanitize_space_random(sub)
+    elif isinstance(space, (spaces.Tuple, getattr(spaces, "Sequence", tuple()))):
+        for sub in space.spaces:
+            _sanitize_space_random(sub)
 
 def make_env(env_id, seed, headless=True):
     """Factory that creates a sanitized TetrisEnv instance for vectorized training."""
