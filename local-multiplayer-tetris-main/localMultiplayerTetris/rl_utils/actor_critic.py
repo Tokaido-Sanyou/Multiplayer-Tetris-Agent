@@ -108,15 +108,27 @@ class ActorCritic(nn.Module):
             nn.ReLU(),
             nn.Linear(self.net_config.CRITIC_HIDDEN_LAYERS[1], self.net_config.CRITIC_OUTPUT_DIM)
         )
+        
+        # NEW: Future state prediction head
+        self.future_state_predictor = nn.Sequential(
+            nn.Linear(combined_feat_dim, self.net_config.CRITIC_HIDDEN_LAYERS[0]),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(self.net_config.CRITIC_HIDDEN_LAYERS[0], self.net_config.CRITIC_HIDDEN_LAYERS[1]),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(self.net_config.CRITIC_HIDDEN_LAYERS[1], self.state_dim)  # Predict next state
+        )
     
-    def forward(self, state, goal=None):
+    def forward(self, state, goal=None, predict_future=False):
         """
-        Forward pass with optional goal conditioning
+        Forward pass with optional goal conditioning and future state prediction
         Args:
             state: tensor (batch, state_dim)
             goal: tensor (batch, goal_dim) - optional goal from state model
+            predict_future: bool - whether to also predict future state
         Returns:
-            action_probs, state_value
+            action_probs, state_value, future_state (if predict_future=True)
         """
         # Extract features from state
         state_feat = self.feature_extractor(state)
@@ -134,7 +146,13 @@ class ActorCritic(nn.Module):
         # Get action probabilities and state value
         action_probs = self.actor(combined_feat)
         state_value = self.critic(combined_feat)
-        return action_probs, state_value
+        
+        if predict_future:
+            # Also predict future state
+            future_state = self.future_state_predictor(combined_feat)
+            return action_probs, state_value, future_state
+        else:
+            return action_probs, state_value
 
 class ActorCriticAgent:
     """
@@ -181,6 +199,9 @@ class ActorCriticAgent:
         # Initialize optimizers
         self.actor_optimizer = optim.Adam(self.network.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = optim.Adam(self.network.critic.parameters(), lr=critic_lr)
+        
+        # NEW: Add optimizer for future state predictor
+        self.future_state_optimizer = optim.Adam(self.network.future_state_predictor.parameters(), lr=critic_lr)
         
         # Initialize replay buffer
         self.memory = ReplayBuffer(100000)
@@ -250,7 +271,7 @@ class ActorCriticAgent:
         Args:
             batch_size: Size of batch to train on (optional)
         Returns:
-            Tuple of (actor_loss, critic_loss) if training occurred, None otherwise
+            Tuple of (actor_loss, critic_loss, future_state_loss) if training occurred, None otherwise
         """
         if batch_size is None:
             batch_size = self.batch_size
@@ -276,6 +297,9 @@ class ActorCriticAgent:
         # Get current action probabilities and state values conditioned on instruction
         action_probs, state_values = self.network(states)
         
+        # NEW: Get future state predictions for training
+        _, _, predicted_future_states = self.network(states, predict_future=True)
+        
         # Get next state values (no instruction)
         with torch.no_grad():
             zero_instr = torch.zeros_like(instructions)
@@ -294,6 +318,9 @@ class ActorCriticAgent:
         # Calculate critic loss (value function)
         critic_loss = (weights * (returns - state_values.squeeze()) ** 2).mean()
         
+        # NEW: Calculate future state prediction loss
+        future_state_loss = F.mse_loss(predicted_future_states, next_states)
+        
         # Update actor
         self.actor_optimizer.zero_grad()
         actor_loss.backward(retain_graph=True)
@@ -302,9 +329,15 @@ class ActorCriticAgent:
         
         # Update critic
         self.critic_optimizer.zero_grad()
-        critic_loss.backward()
+        critic_loss.backward(retain_graph=True)
         torch.nn.utils.clip_grad_norm_(self.network.critic.parameters(), self.gradient_clip)
         self.critic_optimizer.step()
+        
+        # NEW: Update future state predictor
+        self.future_state_optimizer.zero_grad()
+        future_state_loss.backward(retain_graph=True)
+        torch.nn.utils.clip_grad_norm_(self.network.future_state_predictor.parameters(), self.gradient_clip)
+        self.future_state_optimizer.step()
         
         # Auxiliary state-model training (predict placement parameters)
         aux_loss_value = 0.0
@@ -342,7 +375,7 @@ class ActorCriticAgent:
         td_errors = torch.abs(returns - state_values.squeeze()).detach().cpu().numpy()
         self.memory.update_priorities(indices, td_errors + 1e-6)
         
-        return actor_loss.item(), critic_loss.item(), aux_loss_value
+        return actor_loss.item(), critic_loss.item(), aux_loss_value, future_state_loss.item()
     
     def train_ppo(self, batch_size=None, ppo_epochs=4):
         """
@@ -470,22 +503,255 @@ class ActorCriticAgent:
                 total_reward_loss / ppo_epochs,
                 aux_loss_value)
 
+    def train_ppo_with_hindsight(self, batch_size=None, ppo_epochs=4):
+        """
+        Enhanced PPO training with Hindsight Experience Replay (HER) and goal conditioning
+        This addresses PPO training failures by using hindsight relabelling
+        Args:
+            batch_size: Size of batch to train on
+            ppo_epochs: Number of PPO update epochs
+        Returns:
+            Tuple of (actor_loss, critic_loss, reward_loss, aux_loss, future_state_loss) if training occurred, None otherwise
+        """
+        if batch_size is None:
+            batch_size = self.batch_size
+            
+        # Sample from replay buffer
+        batch = self.memory.sample(batch_size)
+        if batch is None:
+            return None
+            
+        states, actions, rewards, next_states, dones, info, indices, weights = batch
+        
+        # Move tensors to device
+        states = states.to(self.device)
+        actions = actions.to(self.device)
+        rewards = rewards.to(self.device)
+        next_states = next_states.to(self.device)
+        dones = dones.to(self.device)
+        weights = weights.to(self.device)
+        
+        # HINDSIGHT EXPERIENCE REPLAY: Generate alternative goals from achieved states
+        # For each transition, create additional training examples with hindsight goals
+        hindsight_states = []
+        hindsight_actions = []
+        hindsight_rewards = []
+        hindsight_next_states = []
+        hindsight_dones = []
+        hindsight_goals = []
+        
+        for i in range(len(states)):
+            # Original transition
+            hindsight_states.append(states[i])
+            hindsight_actions.append(actions[i])
+            hindsight_rewards.append(rewards[i])
+            hindsight_next_states.append(next_states[i])
+            hindsight_dones.append(dones[i])
+            
+            # Get achieved goal (what actually happened)
+            if self.state_model is not None:
+                achieved_goal = self.state_model.get_placement_goal_vector(next_states[i:i+1])
+                hindsight_goals.append(achieved_goal.squeeze(0))
+            else:
+                # Fallback: use zero goal
+                hindsight_goals.append(torch.zeros(36, device=self.device))
+            
+            # Create hindsight transitions: "what if this was my goal all along?"
+            # Sample some random future states from the batch as alternative goals
+            for _ in range(2):  # Create 2 additional hindsight experiences per transition
+                future_idx = np.random.randint(0, len(next_states))
+                future_state = next_states[future_idx:future_idx+1]
+                
+                if self.state_model is not None:
+                    # Use future state as hindsight goal
+                    hindsight_goal = self.state_model.get_placement_goal_vector(future_state)
+                    
+                    # Calculate hindsight reward based on how close we got to this "goal"
+                    hindsight_reward = self._calculate_hindsight_reward(
+                        next_states[i:i+1], future_state, hindsight_goal.squeeze(0)
+                    )
+                    
+                    hindsight_states.append(states[i])
+                    hindsight_actions.append(actions[i])
+                    hindsight_rewards.append(hindsight_reward)
+                    hindsight_next_states.append(next_states[i])
+                    hindsight_dones.append(dones[i])
+                    hindsight_goals.append(hindsight_goal.squeeze(0))
+        
+        # Convert hindsight data to tensors
+        hindsight_states = torch.stack(hindsight_states)
+        hindsight_actions = torch.stack(hindsight_actions)
+        hindsight_rewards = torch.stack(hindsight_rewards)
+        hindsight_next_states = torch.stack(hindsight_next_states)
+        hindsight_dones = torch.stack(hindsight_dones)
+        hindsight_goals = torch.stack(hindsight_goals) if hindsight_goals else None
+        
+        # Get old policy probabilities with goal conditioning
+        with torch.no_grad():
+            old_action_probs, old_state_values = self.network(hindsight_states, hindsight_goals)
+            old_action_log_probs = F.log_softmax(old_action_probs, dim=1)
+            old_selected_log_probs = old_action_log_probs.gather(1, hindsight_actions.long().unsqueeze(1)).squeeze()
+        
+        # Calculate returns and advantages with hindsight rewards
+        with torch.no_grad():
+            _, next_state_values = self.network(hindsight_next_states, hindsight_goals)
+            returns = hindsight_rewards + (1 - hindsight_dones) * self.gamma * next_state_values.squeeze()
+            advantages = returns - old_state_values.squeeze()
+            # Normalize advantages
+            if advantages.std() > 1e-8:
+                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        
+        # PPO training loop with goal conditioning
+        total_actor_loss = 0
+        total_critic_loss = 0
+        total_reward_loss = 0
+        total_future_state_loss = 0
+        
+        for epoch in range(ppo_epochs):
+            # Get current policy probabilities with goal conditioning
+            action_probs, state_values, predicted_future_states = self.network(
+                hindsight_states, hindsight_goals, predict_future=True
+            )
+            action_log_probs = F.log_softmax(action_probs, dim=1)
+            selected_log_probs = action_log_probs.gather(1, hindsight_actions.long().unsqueeze(1)).squeeze()
+            
+            # Calculate ratio for PPO
+            ratio = torch.exp(selected_log_probs - old_selected_log_probs)
+            
+            # Calculate clipped objective
+            surr1 = ratio * advantages
+            surr2 = torch.clamp(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio) * advantages
+            actor_loss = -torch.min(surr1, surr2).mean()
+            
+            # Critic loss with goal conditioning
+            critic_loss = F.mse_loss(state_values.squeeze(), returns)
+            
+            # Future state prediction loss
+            future_state_loss = F.mse_loss(predicted_future_states, hindsight_next_states)
+            
+            # Future reward prediction loss
+            action_one_hot = F.one_hot(hindsight_actions.long(), self.action_dim).float()
+            reward_pred, value_pred = self.future_reward_predictor(hindsight_states, action_one_hot)
+            reward_loss = F.mse_loss(reward_pred.squeeze(), hindsight_rewards) + F.mse_loss(value_pred.squeeze(), returns)
+            
+            # Backpropagation
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward(retain_graph=True)
+            torch.nn.utils.clip_grad_norm_(self.network.actor.parameters(), 0.5)
+            self.actor_optimizer.step()
+            
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward(retain_graph=True)
+            torch.nn.utils.clip_grad_norm_(self.network.critic.parameters(), 0.5)
+            self.critic_optimizer.step()
+            
+            # Update future state predictor
+            self.future_state_optimizer.zero_grad()
+            future_state_loss.backward(retain_graph=True)
+            torch.nn.utils.clip_grad_norm_(self.network.future_state_predictor.parameters(), 0.5)
+            self.future_state_optimizer.step()
+            
+            # Update future reward predictor
+            if hasattr(self, 'reward_optimizer'):
+                self.reward_optimizer.zero_grad()
+                reward_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.future_reward_predictor.parameters(), 0.5)
+                self.reward_optimizer.step()
+            
+            total_actor_loss += actor_loss.item()
+            total_critic_loss += critic_loss.item()
+            total_reward_loss += reward_loss.item()
+            total_future_state_loss += future_state_loss.item()
+        
+        # Add auxiliary state model loss if available
+        aux_loss_value = 0.0
+        if self.state_model is not None and hasattr(self, 'state_model_optimizer'):
+            # Train state model on hindsight goals
+            rot_logits, x_logits, y_logits, value_pred = self.state_model(hindsight_states)
+            
+            # Extract placement targets from hindsight goals
+            # Goal structure: [rotation_one_hot(4) + x_position_one_hot(10) + y_position_one_hot(20) + value(1) + confidence(1)]
+            rot_targets = torch.argmax(hindsight_goals[:, :4], dim=1)
+            x_targets = torch.argmax(hindsight_goals[:, 4:14], dim=1)
+            y_targets = torch.argmax(hindsight_goals[:, 14:34], dim=1)
+            value_targets = hindsight_goals[:, 34]
+            
+            # Compute losses
+            rot_loss = F.cross_entropy(rot_logits, rot_targets.long())
+            x_loss = F.cross_entropy(x_logits, x_targets.long())
+            y_loss = F.cross_entropy(y_logits, y_targets.long())
+            value_loss = F.mse_loss(value_pred.squeeze(), value_targets)
+            aux_loss = rot_loss + x_loss + y_loss + value_loss
+            aux_loss_value = aux_loss.item()
+            
+            # Update state_model parameters
+            self.state_model_optimizer.zero_grad()
+            aux_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.state_model.parameters(), 0.5)
+            self.state_model_optimizer.step()
+        
+        return (total_actor_loss / ppo_epochs, 
+                total_critic_loss / ppo_epochs, 
+                total_reward_loss / ppo_epochs,
+                aux_loss_value,
+                total_future_state_loss / ppo_epochs)
+    
+    def _calculate_hindsight_reward(self, achieved_state, goal_state, goal_vector):
+        """
+        Calculate reward for hindsight experience replay based on goal achievement
+        Args:
+            achieved_state: The state that was actually reached
+            goal_state: The target state (used as hindsight goal)
+            goal_vector: The goal vector encoding
+        Returns:
+            Hindsight reward (higher if closer to goal)
+        """
+        # Calculate similarity between achieved and goal states
+        state_similarity = F.cosine_similarity(achieved_state, goal_state, dim=1)
+        
+        # Extract goal components
+        goal_value = goal_vector[34] if len(goal_vector) > 34 else 0.0
+        goal_confidence = goal_vector[35] if len(goal_vector) > 35 else 0.5
+        
+        # Hindsight reward combines state similarity with goal quality
+        hindsight_reward = (
+            state_similarity * 10.0 +  # Similarity bonus (max +10)
+            goal_value * 0.1 +         # Goal value bonus
+            goal_confidence * 5.0 -    # Confidence bonus (max +5)
+            1.0                        # Base penalty to encourage goal achievement
+        )
+        
+        return hindsight_reward.item()
+
     def save(self, path):
-        """Save model weights"""
+        """Save model weights including future state predictor"""
         torch.save({
             'network_state_dict': self.network.state_dict(),
             'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
             'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
-            'epsilon': self.epsilon
+            'future_state_optimizer_state_dict': self.future_state_optimizer.state_dict(),
+            'epsilon': self.epsilon,
+            'state_dim': self.state_dim,
+            'action_dim': self.action_dim,
+            'training_step': getattr(self, 'training_step', 0)
         }, path)
     
     def load(self, path):
-        """Load model weights"""
+        """Load model weights including future state predictor"""
         checkpoint = torch.load(path, map_location=self.device)
         self.network.load_state_dict(checkpoint['network_state_dict'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        
+        # Load future state optimizer if available (backward compatibility)
+        if 'future_state_optimizer_state_dict' in checkpoint:
+            self.future_state_optimizer.load_state_dict(checkpoint['future_state_optimizer_state_dict'])
+        
         self.epsilon = checkpoint['epsilon']
+        
+        # Load additional parameters if available
+        if 'training_step' in checkpoint:
+            self.training_step = checkpoint['training_step']
     
     def set_writer(self, writer):
         """Set TensorBoard writer for logging"""

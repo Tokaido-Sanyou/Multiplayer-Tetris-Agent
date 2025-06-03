@@ -83,6 +83,7 @@ class StateModel(nn.Module):
     def train_from_placements(self, placement_data, optimizer, num_epochs=10):
         """
         Train the model from exploration placement data with terminal rewards
+        FIXED: Added validation and clamping for classification targets
         Args:
             placement_data: List of dicts with 'state', 'placement', 'terminal_reward'
             optimizer: Optimizer for training
@@ -96,38 +97,76 @@ class StateModel(nn.Module):
         # Get device from model parameters
         device = next(self.parameters()).device
         
+        # Get valid ranges from config
+        max_rotation = self.net_config.ROTATION_CLASSES - 1  # 3 (0-3)
+        max_x_pos = self.net_config.X_POSITION_CLASSES - 1   # 9 (0-9)
+        max_y_pos = self.net_config.Y_POSITION_CLASSES - 1   # 19 (0-19)
+        
         total_losses = []
         rot_losses = []
         x_losses = []
+        y_losses = []
         value_losses = []
         
         criterion = nn.CrossEntropyLoss()
         value_criterion = nn.MSELoss()
         
+        # Validation counters
+        clamped_rotations = 0
+        clamped_x_positions = 0
+        clamped_y_positions = 0
+        
         for epoch in range(num_epochs):
             epoch_total_loss = 0
             epoch_rot_loss = 0
             epoch_x_loss = 0
+            epoch_y_loss = 0
             epoch_value_loss = 0
             
             np.random.shuffle(placement_data)
             
             for data in placement_data:
                 state = torch.FloatTensor(data['state']).unsqueeze(0).to(device)
-                rotation, x_pos = data['placement']
+                
+                # Handle both 2-tuple and 3-tuple placements for backward compatibility
+                placement = data['placement']
+                if len(placement) == 2:
+                    rotation, x_pos = placement
+                    y_pos = 10  # Default y position for backward compatibility
+                elif len(placement) == 3:
+                    rotation, x_pos, y_pos = placement
+                else:
+                    raise ValueError(f"Invalid placement format: {placement}")
+                
                 terminal_reward = data['terminal_reward']
+                
+                # FIXED: Validate and clamp all targets to valid ranges
+                original_rotation, original_x_pos, original_y_pos = rotation, x_pos, y_pos
+                
+                rotation = max(0, min(max_rotation, int(rotation)))
+                x_pos = max(0, min(max_x_pos, int(x_pos)))
+                y_pos = max(0, min(max_y_pos, int(y_pos)))
+                
+                # Track clamping for debugging
+                if rotation != original_rotation:
+                    clamped_rotations += 1
+                if x_pos != original_x_pos:
+                    clamped_x_positions += 1
+                if y_pos != original_y_pos:
+                    clamped_y_positions += 1
                 
                 # Forward pass
                 rot_logits, x_logits, y_logits, value_pred = self.forward(state)
                 
-                # Calculate losses (move targets to device)
+                # Calculate losses with validated targets
                 rot_loss = criterion(rot_logits, torch.LongTensor([rotation]).to(device))
                 x_loss = criterion(x_logits, torch.LongTensor([x_pos]).to(device))
+                y_loss = criterion(y_logits, torch.LongTensor([y_pos]).to(device))
                 value_loss = value_criterion(value_pred, torch.FloatTensor([[terminal_reward]]).to(device))
                 
                 # Weight losses by terminal reward (higher rewards get more weight)
                 reward_weight = max(0.1, (terminal_reward + 100) / 200)  # Normalize to [0.1, 1]
-                total_loss = reward_weight * (rot_loss + x_loss) + value_loss
+                total_loss = reward_weight * (rot_loss + x_loss + y_loss) + value_loss
                 
                 # Backpropagation
                 optimizer.zero_grad()
@@ -138,6 +177,7 @@ class StateModel(nn.Module):
                 epoch_total_loss += total_loss.item()
                 epoch_rot_loss += rot_loss.item()
                 epoch_x_loss += x_loss.item()
+                epoch_y_loss += y_loss.item()
                 epoch_value_loss += value_loss.item()
             
             # Average losses for this epoch
@@ -145,17 +185,29 @@ class StateModel(nn.Module):
             total_losses.append(epoch_total_loss / num_samples)
             rot_losses.append(epoch_rot_loss / num_samples)
             x_losses.append(epoch_x_loss / num_samples)
+            y_losses.append(epoch_y_loss / num_samples)
             value_losses.append(epoch_value_loss / num_samples)
+        
+        # Report clamping statistics if any occurred
+        if clamped_rotations > 0 or clamped_x_positions > 0 or clamped_y_positions > 0:
+            print(f"   🔧 Target validation: clamped {clamped_rotations} rotations, {clamped_x_positions} x-positions, {clamped_y_positions} y-positions")
         
         return {
             'total_loss': total_losses[-1],  # Final epoch loss
             'rotation_loss': rot_losses[-1],
             'x_position_loss': x_losses[-1],
+            'y_position_loss': y_losses[-1],
             'value_loss': value_losses[-1],
             'all_total_losses': total_losses,
             'all_rotation_losses': rot_losses,
             'all_x_position_losses': x_losses,
-            'all_value_losses': value_losses
+            'all_y_position_losses': y_losses,
+            'all_value_losses': value_losses,
+            'clamped_targets': {
+                'rotations': clamped_rotations,
+                'x_positions': clamped_x_positions,
+                'y_positions': clamped_y_positions
+            }
         }
 
     def get_optimal_placement(self, state):

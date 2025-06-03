@@ -6,16 +6,19 @@ A sophisticated multi-agent reinforcement learning system for Tetris that implem
 
 This project implements a state-of-the-art hierarchical RL system for Tetris using:
 - **State Model**: Predicts optimal piece placements from current game states
-- **Goal-Conditioned Actor-Critic**: Uses state model outputs as goals for action selection
+- **Goal-Conditioned Actor-Critic**: Uses state model outputs as goals for action selection with future state prediction
 - **Future Reward Predictor**: Estimates long-term value of terminal block placements
-- **RND Exploration**: Random Network Distillation for curiosity-driven exploration
+- **Enhanced RND Exploration**: Terminal value-based curiosity with novelty tracking for unvisited states
 - **Adaptive Reward System**: Piece presence rewards that decay over training
-- **Unified Training Pipeline**: 6-phase algorithm for robust learning
+- **Unified Training Pipeline**: 6-phase algorithm for robust learning with comprehensive monitoring
 
 ### Key Features
 - ✅ **Goal-Conditioned Learning**: State model outputs directly feed as goals to the actor
-- ✅ **RND Exploration**: Curiosity-driven exploration using Random Network Distillation
+- ✅ **Enhanced RND Exploration**: Terminal value-based curiosity with novelty detection for unvisited states
+- ✅ **Future State Prediction**: Actor-critic enhanced with future state prediction head
 - ✅ **Adaptive Piece Presence Rewards**: Rewards decrease from 1.0 to 0.0 over first half of training
+- ✅ **Streamlined Phase Reporting**: Clean console output with immediate statistics after each phase
+- ✅ **Comprehensive Model Persistence**: Save/load all components including RND state and future predictors
 - ✅ **Consistent Network Parameters**: Centralized configuration across all components
 - ✅ **Lines Cleared Tracking**: Episode-by-episode performance monitoring
 - ✅ **Blended Reward Prediction**: Future reward predictor integrates with state model
@@ -72,8 +75,8 @@ Outputs:
   - Terminal value (1 value)
 ```
 
-### 2. Actor-Critic Network (Goal-Conditioned)
-**Purpose**: Selects actions based on current state + optimal placement goals
+### 2. Enhanced Actor-Critic Network (Goal-Conditioned + Future State Prediction)
+**Purpose**: Selects actions based on current state + optimal placement goals + predicts future states
 ```python
 State Features: 410 → 512 → 256 → 128
 Goal Encoder: 36 → 64 → 64
@@ -81,6 +84,7 @@ Combined Features: 192 (128 state + 64 goal)
 
 Actor: 192 → 256 → 128 → 8 (sigmoid)
 Critic: 192 → 256 → 128 → 1
+Future State Predictor: 192 → 256 → 128 → 410 (predicts next state)
 ```
 
 ### 3. Future Reward Predictor
@@ -123,13 +127,17 @@ exploration_bonus = intrinsic_reward * scale_factor
 
 ## 🔄 6-Phase Training Algorithm
 
-### Phase 1: RND-Driven Exploration Data Collection
-- **RND Exploration Actor** uses Random Network Distillation for curiosity-driven exploration
-- **Intrinsic Motivation**: Prediction error on random network provides exploration signal
-- Records **ONLY terminal states** (final placement outcomes) with intrinsic rewards
-- Generates 2-6 terminal placement simulations per game step (scaled by intrinsic reward)
-- Collects (state, placement, terminal_reward, resulting_state, intrinsic_reward) tuples
-- **Adaptive Exploration**: High intrinsic reward → more diverse placements, low → conservative
+### Phase 1: Enhanced Terminal Value-Based RND Exploration
+- **Enhanced RND Exploration Actor** uses terminal value prediction for curiosity-driven exploration
+- **Terminal Value Focus**: RND rewards based on terminal state values rather than prediction error
+- **Piece-Focused Episodes**: Each episode explores one specific piece type (I, O, T, S, Z, J, L) for consistent learning
+- **Episode Distribution**: Automatically adjusts episode count to multiples of 7 for even piece coverage
+- **Novelty Detection**: Tracks visited terminal states and strongly encourages exploration of unvisited ones
+- **Smart Terminal Generation**: 4-10 terminal placement attempts per step, scaled by intrinsic reward
+- Records **ONLY terminal states** with enhanced rewards: terminal_value + intrinsic_bonus + novelty_bonus
+- **Unvisited State Bias**: Novel terminal states receive 5x bonus, revisited states get minimal reward
+- **Distinct State Tracking**: Reports new terminal states discovered per batch for progress monitoring
+- Collects (state, placement, enhanced_terminal_reward, resulting_state, novelty_score, target_piece_type) tuples
 
 ### Phase 2: State Model Learning
 - Trains state model on terminal placement data with intrinsic motivation
@@ -191,13 +199,14 @@ BUMPINESS_WEIGHT = 0.2      # Penalty for uneven surface (reduced from 1.0)
 ### NEW: Adaptive Piece Presence Reward System
 ```python
 # Encourages longer games early in training, phases out as agent improves
-PIECE_PRESENCE_REWARD = 1.0        # Base reward per piece on board
+PIECE_PRESENCE_REWARD = 1.0        # Base reward (+1 per step when pieces present)
 PIECE_PRESENCE_DECAY_STEPS = 500   # Decay over first 500 episodes (first half)
 PIECE_PRESENCE_MIN = 0.0           # No reward after episode 500
 
 # Calculation:
-# Episodes 0-500: reward = (1.0 - episode/500) * pieces_on_board
+# Episodes 0-500: reward = +1 per step (if pieces present) * (1.0 - episode/500)
 # Episodes 500+:  reward = 0.0
+# Note: Reward is +1 per step, NOT +num_pieces per step
 ```
 
 ### RND Intrinsic Motivation
@@ -225,6 +234,105 @@ EXPLORATION_BUMPINESS_WEIGHT = -0.1    # Surface smoothness
 # Higher terminal rewards get more training weight
 reward_weight = max(0.1, (terminal_reward + 100) / 200)
 total_loss = reward_weight * (rotation_loss + x_loss) + value_loss
+```
+
+## 📊 Streamlined Console Reporting
+
+The system provides clean, real-time monitoring with immediate phase results and concise batch summaries:
+
+### Phase-by-Phase Reporting
+Each training phase reports its results immediately upon completion:
+
+```
+🔍 Phase 1: RND Terminal State Exploration (Batch 1)
+Starting RND exploration: 21 episodes (3 per piece type)...
+✅ RND Exploration completed:
+   • Total terminal placements: 800
+   • Episodes per piece type: 3
+   • Unique terminal states discovered: 156
+   • New distinct states this batch: 47
+   • Average terminal value: 12.45
+   • RND learning progress - Mean: 0.1234, Std: 0.0567
+
+📊 Phase 1 Results:
+   • Terminal rewards: 12.46 ± 8.23
+   • Success rate: 67.5% (540/800)
+   • Intrinsic motivation: 0.345 ± 0.123
+   • Novel states discovered: 156
+   • Distinct terminal states this batch: 47
+
+🎯 Phase 2: State Model Training (Batch 1)
+📊 Phase 2 Results:
+   • Total loss: 0.0457 (improvement: 12.3%)
+   • Rotation loss: 0.0123
+   • Position loss: 0.0235
+   • Value loss: 0.0099
+
+🔮 Phase 3: Future Reward Prediction (Batch 1)
+📊 Phase 3 Results:
+   • Total loss: 0.0346
+   • Reward prediction: 0.0189
+   • Value prediction: 0.0157
+
+🎮 Phase 4: Policy Exploitation Episodes (Batch 1)
+📊 Phase 4 Results:
+   • Episode rewards: 145.67 ± 23.45
+   • Episode steps: 89.3 ± 15.2
+   • Lines cleared: 3.2 ± 1.8
+   • Piece presence decay: 0.876 (reward: 2.456)
+
+🏋️ Phase 5: PPO Policy Training (Batch 1)
+📊 Phase 5 Results:
+   • Actor loss: 0.001234
+   • Critic loss: 0.002345
+   • Future state loss: 0.003456
+   • Training success rate: 100.0%
+
+📊 Phase 6: Policy Evaluation (Batch 1)
+📊 Phase 6 Results:
+   • Pure policy reward: 156.78
+   • Pure policy steps: 94.5
+```
+
+### Concise Batch Summaries
+At the end of each batch, a clean summary shows key metrics:
+
+```
+================================================================================
+📊 BATCH 1 SUMMARY
+================================================================================
+📈 PROGRESS: 2.0% complete • Episode 40/1000 • ε=0.9950
+
+🔍 EXPLORATION: 12.5 • 68% • +47
+🎯 STATE MODEL: 0.0457 • +12%
+🔮 REWARD PRED: 0.0346
+🎮 EXPLOITATION: 145.7 • 3.2 • 88%
+🏋️ PPO TRAINING: 0.0012 • 0.0023 • 0.0035
+�� EVALUATION: 156.8
+================================================================================
+```
+
+### Enhanced Model Persistence
+The system now saves comprehensive checkpoints including:
+- **All Network States**: Actor-critic, state model, future reward predictor
+- **All Optimizers**: Including future state predictor optimizer
+- **RND Exploration State**: Visited terminal states, value history, learning progress
+- **Training Progress**: Episodes completed, epsilon decay, performance metrics
+- **Backward Compatibility**: Graceful loading of older checkpoints
+
+### Checkpoint Management
+```python
+# Automatic saving every 10 batches + latest checkpoint
+checkpoint_batch_10.pt    # Batch 10 state
+checkpoint_batch_20.pt    # Batch 20 state
+latest_checkpoint.pt      # Most recent state (updated every batch)
+
+# Loading checkpoints
+trainer.load_checkpoint('checkpoints/latest_checkpoint.pt')
+# ✅ Checkpoint loaded successfully!
+#    • Batch: 25, Episodes: 500
+#    • Exploration data: 800 placements
+#    • Epsilon: 0.7788
 ```
 
 ## 📊 Training Configuration

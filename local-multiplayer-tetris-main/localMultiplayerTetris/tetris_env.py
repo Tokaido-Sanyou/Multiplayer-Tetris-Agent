@@ -94,24 +94,42 @@ class TetrisEnv(gym.Env):
         self.gravity_interval = 5  # agent steps per gravity drop
         
     def _get_observation(self):
-        """Convert game state to simplified binary observation format (NEW: 410-dimensional)"""
-        # Use the already imported shapes from the top of the file
-        
+        """
+        Convert game state to enhanced observation format with complete block representation
+        ENHANCEMENT: Ensures ALL coordinates of every active block are recorded, not just center pieces
+        """
         # Initialize simplified grids (removed 7-piece type grids)
         current_piece_grid = np.zeros((20, 10), dtype=np.int8)
         empty_grid = np.ones((20, 10), dtype=np.int8)  # Start with all empty
         
-        # Process locked positions - just mark as occupied in empty grid
+        # Process locked positions - these are terminal blocks, mark as occupied in empty grid
         for (x, y), color in self.player.locked_positions.items():
             if 0 <= x < 10 and 0 <= y < 20:
                 empty_grid[y][x] = 0  # Not empty
         
-        # Add current falling piece to its grid
+        # ENHANCEMENT: Add current falling piece to its grid with complete coordinate representation
+        # This ensures ALL coordinates of the active block are captured, not just reference points
         if self.player.current_piece:
-            for x, y in convert_shape_format(self.player.current_piece):
+            # Use convert_shape_format to get ALL block coordinates of the active piece
+            piece_coordinates = convert_shape_format(self.player.current_piece)
+            
+            # Mark ALL coordinates of the active piece in both grids
+            for x, y in piece_coordinates:
                 if 0 <= y < 20 and 0 <= x < 10:
-                    current_piece_grid[y][x] = 1
-                    empty_grid[y][x] = 0
+                    current_piece_grid[y][x] = 1  # Mark active block cell
+                    empty_grid[y][x] = 0          # Also mark as not empty
+                # Note: We allow negative y for pieces spawning above visible grid
+                elif 0 <= x < 10 and y < 0:
+                    # Piece is spawning above visible grid - this is normal
+                    pass
+        
+        # ENHANCEMENT: Verify complete representation (for debugging)
+        if self.player.current_piece:
+            piece_coordinates = convert_shape_format(self.player.current_piece)
+            visible_coords = [(x, y) for x, y in piece_coordinates if 0 <= y < 20 and 0 <= x < 10]
+            marked_coords = np.sum(current_piece_grid)
+            # Ensure all visible coordinates are marked
+            assert marked_coords == len(visible_coords), f"Mismatch: {marked_coords} marked vs {len(visible_coords)} visible coords"
         
         # Create one-hot encoding for next piece only (removed hold piece)
         next_piece_onehot = np.zeros(7, dtype=np.int8)
@@ -120,14 +138,14 @@ class TetrisEnv(gym.Env):
             next_piece_onehot[next_shape_idx] = 1
         
         return {
-            'current_piece_grid': current_piece_grid,    # 200 values (20×10)
-            'empty_grid': empty_grid,                    # 200 values (20×10)
+            'current_piece_grid': current_piece_grid,    # 200 values (20×10) - ALL active block coordinates
+            'empty_grid': empty_grid,                    # 200 values (20×10) - complete occupancy info
             'next_piece': next_piece_onehot,             # 7 values (one-hot for next piece only)
             'current_rotation': self.player.current_piece.rotation if self.player.current_piece else 0,  # 1 value
             'current_x': max(0, min(9, self.player.current_piece.x)) if self.player.current_piece else 0,  # 1 value  
             'current_y': max(0, min(19, self.player.current_piece.y)) if self.player.current_piece else 0  # 1 value
         }
-        # Total: 200 + 200 + 7 + 3 = 410 dimensions
+        # Total: 200 + 200 + 7 + 3 = 410 dimensions with COMPLETE active block representation
     
     def _get_reward(self, lines_cleared, game_over):
         # 1. Line-clear + time penalty
