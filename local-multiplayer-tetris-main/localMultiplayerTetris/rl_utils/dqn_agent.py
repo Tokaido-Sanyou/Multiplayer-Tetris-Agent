@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from .replay_buffer import ReplayBuffer
+
+# Handle both direct execution and module import
+try:
+    from .replay_buffer import ReplayBuffer
+except ImportError:
+    # Direct execution - imports without relative paths
+    from replay_buffer import ReplayBuffer
 
 class DQN(nn.Module):
     """

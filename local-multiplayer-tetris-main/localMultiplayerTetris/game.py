@@ -2,13 +2,26 @@ import pygame
 import random
 import collections
 import os
-from .constants import *
-from .block_pool import BlockPool
-from .player import Player
-from .utils import create_grid, check_lost, draw_window, draw_next_pieces, draw_hold_piece, add_garbage_line, hard_drop, get_shape_from_index
-from .piece_utils import valid_space, convert_shape_format
-from .piece import Piece
-from .action_handler import ActionHandler
+import sys
+
+# Handle both direct execution and module import
+try:
+    from .constants import *
+    from .block_pool import BlockPool
+    from .player import Player
+    from .utils import create_grid, check_lost, draw_window, draw_next_pieces, draw_hold_piece, add_garbage_line, hard_drop, get_shape_from_index
+    from .piece_utils import valid_space, convert_shape_format
+    from .piece import Piece
+    from .action_handler import ActionHandler
+except ImportError:
+    # Direct execution - imports without relative paths
+    from constants import *
+    from block_pool import BlockPool
+    from player import Player
+    from utils import create_grid, check_lost, draw_window, draw_next_pieces, draw_hold_piece, add_garbage_line, hard_drop, get_shape_from_index
+    from piece_utils import valid_space, convert_shape_format
+    from piece import Piece
+    from action_handler import ActionHandler
 
 """
 10 x 20 square grid

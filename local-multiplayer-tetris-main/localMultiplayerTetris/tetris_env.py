@@ -3,12 +3,23 @@ import numpy as np
 from gym import spaces
 import pygame
 import random
-from .game import Game, Piece
-from .utils import create_grid, check_lost, count_holes
-from .piece_utils import valid_space, convert_shape_format
-from .constants import shapes, shape_colors, s_width, s_height
 import time
 import logging
+import os
+import sys
+
+# Handle both direct execution and module import
+try:
+    from .game import Game, Piece
+    from .utils import create_grid, check_lost, count_holes
+    from .piece_utils import valid_space, convert_shape_format
+    from .constants import shapes, shape_colors, s_width, s_height
+except ImportError:
+    # Direct execution - imports without relative paths
+    from game import Game, Piece
+    from utils import create_grid, check_lost, count_holes
+    from piece_utils import valid_space, convert_shape_format
+    from constants import shapes, shape_colors, s_width, s_height
 
 # Configure debug logging to file
 logging.basicConfig(level=logging.DEBUG,
@@ -33,24 +44,31 @@ class TetrisEnv(gym.Env):
             pygame.init()
         
         # Action space:
-        # 0: Move Left
-        # 1: Move Right
-        # 2: Move Down
-        # 3: Rotate Clockwise
-        # 4: Rotate Counter-clockwise
-        # 5: Hard Drop
-        # 6: Hold Piece
-        # 7: No-op
-        self.action_space = spaces.Discrete(8)
+        # Changed from scalar to one-hot encoding
+        # Each action is now represented as an 8-dimensional binary vector
+        # 0: Move Left      -> [1,0,0,0,0,0,0,0]
+        # 1: Move Right     -> [0,1,0,0,0,0,0,0]
+        # 2: Move Down      -> [0,0,1,0,0,0,0,0]
+        # 3: Rotate CW      -> [0,0,0,1,0,0,0,0]
+        # 4: Rotate CCW     -> [0,0,0,0,1,0,0,0]
+        # 5: Hard Drop      -> [0,0,0,0,0,1,0,0]
+        # 6: Hold Piece     -> [0,0,0,0,0,0,1,0]
+        # 7: No-op          -> [0,0,0,0,0,0,0,1]
+        self.action_space = spaces.Box(low=0, high=1, shape=(8,), dtype=np.int8)
         
-        # Define observation space
-        # Grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
-        # Next piece: scalar shape ID (1-7, 0 if none)
-        # Hold piece: scalar shape ID (1-7, 0 if none)
+        # Define observation space - Multi-channel binary representation
+        # Each of the 7 piece types gets its own 20x10 binary grid
+        # Plus current piece overlay, next piece one-hot, hold piece one-hot
+        # Total: 9 grids (7 piece types + current piece + empty) + 7 next + 7 hold + 4 metadata = 9*200 + 7 + 7 + 4 = 1818
         self.observation_space = spaces.Dict({
-            'grid': spaces.Box(low=0, high=2, shape=(20, 10), dtype=np.int8),
-            'next_piece': spaces.Box(low=0, high=7, shape=(), dtype=np.int8),
-            'hold_piece': spaces.Box(low=0, high=7, shape=(), dtype=np.int8)
+            'piece_grids': spaces.Box(low=0, high=1, shape=(7, 20, 10), dtype=np.int8),  # 7 piece types
+            'current_piece_grid': spaces.Box(low=0, high=1, shape=(20, 10), dtype=np.int8),  # Current falling piece
+            'empty_grid': spaces.Box(low=0, high=1, shape=(20, 10), dtype=np.int8),  # Empty spaces
+            'next_piece': spaces.Box(low=0, high=1, shape=(7,), dtype=np.int8),  # One-hot encoding
+            'hold_piece': spaces.Box(low=0, high=1, shape=(7,), dtype=np.int8),  # One-hot encoding
+            'current_rotation': spaces.Box(low=0, high=3, shape=(), dtype=np.int8),
+            'current_x': spaces.Box(low=0, high=9, shape=(), dtype=np.int8),
+            'current_y': spaces.Box(low=0, high=19, shape=(), dtype=np.int8)
         })
         
         # Initialize game components
@@ -76,30 +94,40 @@ class TetrisEnv(gym.Env):
         self.gravity_interval = 5  # agent steps per gravity drop
         
     def _get_observation(self):
-        """Convert game state to observation space format"""
-        # Get grid state
-        grid = create_grid(self.player.locked_positions)
-        grid_obs = np.zeros((20, 10), dtype=np.int8)
-        for i in range(20):
-            for j in range(10):
-                if grid[i][j] != (0, 0, 0):
-                    grid_obs[i][j] = 1
+        """Convert game state to simplified binary observation format (NEW: 410-dimensional)"""
+        # Use the already imported shapes from the top of the file
         
-        # Overlay current falling piece as 2s
+        # Initialize simplified grids (removed 7-piece type grids)
+        current_piece_grid = np.zeros((20, 10), dtype=np.int8)
+        empty_grid = np.ones((20, 10), dtype=np.int8)  # Start with all empty
+        
+        # Process locked positions - just mark as occupied in empty grid
+        for (x, y), color in self.player.locked_positions.items():
+            if 0 <= x < 10 and 0 <= y < 20:
+                empty_grid[y][x] = 0  # Not empty
+        
+        # Add current falling piece to its grid
         if self.player.current_piece:
             for x, y in convert_shape_format(self.player.current_piece):
                 if 0 <= y < 20 and 0 <= x < 10:
-                    grid_obs[y][x] = 2
+                    current_piece_grid[y][x] = 1
+                    empty_grid[y][x] = 0
         
-        # Encode next and hold pieces as shape IDs (1-7, 0 if none)
-        next_idx = shapes.index(self.player.next_pieces[0].shape) + 1 if self.player.next_pieces else 0
-        hold_idx = shapes.index(self.player.hold_piece.shape) + 1 if self.player.hold_piece else 0
+        # Create one-hot encoding for next piece only (removed hold piece)
+        next_piece_onehot = np.zeros(7, dtype=np.int8)
+        if self.player.next_pieces and len(self.player.next_pieces) > 0:
+            next_shape_idx = shapes.index(self.player.next_pieces[0].shape)
+            next_piece_onehot[next_shape_idx] = 1
         
         return {
-            'grid': grid_obs,
-            'next_piece': next_idx,
-            'hold_piece': hold_idx
+            'current_piece_grid': current_piece_grid,    # 200 values (20×10)
+            'empty_grid': empty_grid,                    # 200 values (20×10)
+            'next_piece': next_piece_onehot,             # 7 values (one-hot for next piece only)
+            'current_rotation': self.player.current_piece.rotation if self.player.current_piece else 0,  # 1 value
+            'current_x': max(0, min(9, self.player.current_piece.x)) if self.player.current_piece else 0,  # 1 value  
+            'current_y': max(0, min(19, self.player.current_piece.y)) if self.player.current_piece else 0  # 1 value
         }
+        # Total: 200 + 200 + 7 + 3 = 410 dimensions
     
     def _get_reward(self, lines_cleared, game_over):
         # 1. Line-clear + time penalty
@@ -173,20 +201,24 @@ class TetrisEnv(gym.Env):
     def step(self, action):
         """Execute one time step within the environment"""
         self.episode_steps += 1
+        
+        # Convert one-hot action to scalar for easier processing
+        action_idx = self._action_one_hot_to_scalar(action)
+        
         # Debug: log step start
         logger.debug(
-            f"STEP {self.episode_steps}: Action={action}. Current piece pos=({self.player.current_piece.x},{self.player.current_piece.y}). Locked count={len(self.player.locked_positions)}"
+            f"STEP {self.episode_steps}: Action={action_idx}. Current piece pos=({self.player.current_piece.x},{self.player.current_piece.y}). Locked count={len(self.player.locked_positions)}"
         )
 
         piece_placed = False
         lines_cleared = 0
 
         # Map action to game action
-        if action == 0:  # Move Left
+        if action_idx == 0:  # Move Left
             self.player.action_handler.move_left()
-        elif action == 1:  # Move Right
+        elif action_idx == 1:  # Move Right
             self.player.action_handler.move_right()
-        elif action == 2:  # Soft Drop / Move Down
+        elif action_idx == 2:  # Soft Drop / Move Down
             prev_y = self.player.current_piece.y
             self.player.action_handler.move_down()
             # If unable to move down, lock piece
@@ -209,11 +241,11 @@ class TetrisEnv(gym.Env):
                 logger.debug(
                     f"LOCK (soft drop): lines_cleared={lines_cleared}. Next piece shape={self.player.current_piece.shape}, pos=({self.player.current_piece.x},{self.player.current_piece.y})"
                 )
-        elif action == 3:  # Rotate Clockwise
+        elif action_idx == 3:  # Rotate Clockwise
             self.player.action_handler.rotate_cw()
-        elif action == 4:  # Rotate Counter-clockwise
+        elif action_idx == 4:  # Rotate Counter-clockwise
             self.player.action_handler.rotate_ccw()
-        elif action == 5:  # Hard Drop
+        elif action_idx == 5:  # Hard Drop
             self.player.action_handler.hard_drop()
             # Ensure at least one block on playfield before locking
             formatted = convert_shape_format(self.player.current_piece)
@@ -247,8 +279,14 @@ class TetrisEnv(gym.Env):
                         'level': self.game.level, 'episode_steps': self.episode_steps,
                         'piece_placed': piece_placed}
                 return obs, rw, True, info
+        elif action_idx == 6:  # Hold Piece
+            # Implement hold piece functionality if needed
+            pass
+        elif action_idx == 7:  # No-op
+            pass
+            
         # Gravity: drop every gravity_interval agent steps (skip after hard drop)
-        if action != 5 and self.episode_steps % self.gravity_interval == 0:
+        if action_idx != 5 and self.episode_steps % self.gravity_interval == 0:
             prev_y = self.player.current_piece.y
             self.player.action_handler.move_down()
             if self.player.current_piece.y == prev_y:
@@ -365,3 +403,13 @@ class TetrisEnv(gym.Env):
             self.surface = None
         if not self.headless:
             pygame.quit()
+
+    def _action_one_hot_to_scalar(self, action_one_hot):
+        """Convert one-hot action vector to scalar action index"""
+        return np.argmax(action_one_hot)
+    
+    def _action_scalar_to_one_hot(self, action_scalar):
+        """Convert scalar action index to one-hot vector"""
+        one_hot = np.zeros(8, dtype=np.int8)
+        one_hot[action_scalar] = 1
+        return one_hot

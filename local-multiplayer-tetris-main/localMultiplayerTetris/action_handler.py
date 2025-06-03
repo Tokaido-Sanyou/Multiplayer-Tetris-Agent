@@ -1,6 +1,14 @@
-from .utils import create_grid, hard_drop, get_shape_from_index
-from .piece_utils import valid_space
-from .constants import *
+
+# Handle both direct execution and module import
+try:
+    from .utils import create_grid, hard_drop, get_shape_from_index
+    from .piece_utils import valid_space
+    from .constants import *
+except ImportError:
+    # Direct execution - imports without relative paths
+    from utils import create_grid, hard_drop, get_shape_from_index
+    from piece_utils import valid_space
+    from constants import *
 
 class ActionHandler:
     def __init__(self, player):

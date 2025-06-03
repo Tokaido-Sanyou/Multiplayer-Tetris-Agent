@@ -2,15 +2,23 @@ import os
 import numpy as np
 import torch
 import logging
-from ..tetris_env import TetrisEnv
-from .state_model import StateModel
-from .hierarchical_agent import HierarchicalAgent
 import pygame
 import cProfile
 import pstats
 import sys
 import argparse
 from torch.utils.tensorboard import SummaryWriter
+
+# Handle both direct execution and module import
+try:
+    from ..tetris_env import TetrisEnv
+    from .state_model import StateModel
+    from .hierarchical_agent import HierarchicalAgent
+except ImportError:
+    # Direct execution - imports without relative paths
+    from .tetris_env import TetrisEnv
+    from state_model import StateModel
+    from hierarchical_agent import HierarchicalAgent
 
 # Set up logging
 logging.basicConfig(

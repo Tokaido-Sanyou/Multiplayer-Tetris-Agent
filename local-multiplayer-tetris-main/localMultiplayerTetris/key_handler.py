@@ -3,7 +3,13 @@ Key handler for managing keyboard input
 """
 
 import pygame
-from .action_handler import ActionHandler
+
+# Handle both direct execution and module import
+try:
+    from .action_handler import ActionHandler
+except ImportError:
+    # Direct execution - imports without relative paths
+    from action_handler import ActionHandler
 
 class KeyHandler:
     """Translates keyboard input to actions"""

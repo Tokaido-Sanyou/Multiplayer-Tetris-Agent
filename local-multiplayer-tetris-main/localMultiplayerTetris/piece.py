@@ -3,8 +3,15 @@ Piece class for Tetris game
 """
 
 import pygame
-from .constants import shapes, shape_colors, I_WALL_KICKS, JLSTZ_WALL_KICKS
-from .piece_utils import valid_space, convert_shape_format
+
+# Handle both direct execution and module import
+try:
+    from .constants import shapes, shape_colors, I_WALL_KICKS, JLSTZ_WALL_KICKS
+    from .piece_utils import valid_space, convert_shape_format
+except ImportError:
+    # Direct execution - imports without relative paths
+    from constants import shapes, shape_colors, I_WALL_KICKS, JLSTZ_WALL_KICKS
+    from piece_utils import valid_space, convert_shape_format
 
 class Piece:
     def __init__(self, x, y, shape):

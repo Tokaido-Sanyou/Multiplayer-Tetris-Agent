@@ -1,45 +1,159 @@
 """
-State transition model: predicts next state given current state and action.
+State transition model: predicts optimal piece placements from terminal rewards.
 """
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+
+# Handle both direct execution and module import
+try:
+    from ..config import TetrisConfig  # Import centralized config
+except ImportError:
+    # Direct execution - add parent directory to path
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from config import TetrisConfig  # Import centralized config
 
 class StateModel(nn.Module):
     """
-    Predicts ideal placement (rotation and x-position) for the current piece given board state.
-    Input: flattened state vector (grid + piece metadata)
-    Output: rotation logits and x-position logits
+    State model that learns to predict optimal piece placements from state vectors
+    Uses centralized configuration for all network dimensions
     """
-    def __init__(self, state_dim=206, hidden_dim=256, num_rotations=4, board_width=10):
+    def __init__(self, state_dim=None):
         super(StateModel, self).__init__()
-        self.state_dim = state_dim
-        self.hidden_dim = hidden_dim
-        self.num_rotations = num_rotations
-        self.board_width = board_width
-        # MLP encoder
-        self.fc = nn.Sequential(
-            nn.Linear(state_dim, hidden_dim),
+        
+        # Get centralized config
+        self.config = TetrisConfig()
+        self.net_config = self.config.NetworkConfig.StateModel
+        
+        # Use centralized state dimension
+        self.state_dim = state_dim or self.config.STATE_DIM  # 410
+        
+        # MLP encoder with dropout (using centralized config)
+        self.encoder = nn.Sequential(
+            nn.Linear(self.state_dim, self.net_config.ENCODER_LAYERS[1]),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Dropout(self.net_config.DROPOUT_RATE),
+            nn.Linear(self.net_config.ENCODER_LAYERS[1], self.net_config.ENCODER_LAYERS[2]),
+            nn.ReLU(),
+            nn.Dropout(self.net_config.DROPOUT_RATE),
+            nn.Linear(self.net_config.ENCODER_LAYERS[2], self.net_config.ENCODER_LAYERS[3]),
             nn.ReLU()
         )
-        # Predict placement parameters
-        self.rot_out = nn.Linear(hidden_dim, num_rotations)
-        self.x_out = nn.Linear(hidden_dim, board_width)
-        # Predict vertical landing row (y-position)
-        self.y_out = nn.Linear(hidden_dim, board_width)  # board height logits
+        
+        # Output heads (using centralized config)
+        self.rotation_head = nn.Linear(self.net_config.ENCODER_LAYERS[3], self.net_config.ROTATION_CLASSES)
+        self.x_position_head = nn.Linear(self.net_config.ENCODER_LAYERS[3], self.net_config.X_POSITION_CLASSES)
+        self.y_position_head = nn.Linear(self.net_config.ENCODER_LAYERS[3], self.net_config.Y_POSITION_CLASSES)
+        self.value_head = nn.Linear(self.net_config.ENCODER_LAYERS[3], self.net_config.VALUE_OUTPUT)
 
     def forward(self, state):
         """
         Args:
             state: Tensor of shape (batch_size, state_dim)
         Returns:
-            rot_logits: (batch_size, num_rotations), x_logits: (batch_size, board_width),
-            y_logits: (batch_size, board_width)  # vertical position logits
+            rot_logits: (batch_size, num_rotations)
+            x_logits: (batch_size, board_width)
+            y_logits: (batch_size, board_height)
+            value: (batch_size, 1) - predicted terminal reward
         """
-        h = self.fc(state)
-        rot_logits = self.rot_out(h)
-        x_logits = self.x_out(h)
-        y_logits = self.y_out(h)
-        return rot_logits, x_logits, y_logits
+        h = self.encoder(state)
+        rot_logits = self.rotation_head(h)
+        x_logits = self.x_position_head(h)
+        y_logits = self.y_position_head(h)
+        value = self.value_head(h)
+        return rot_logits, x_logits, y_logits, value
+    
+    def get_placement_distribution(self, state):
+        """
+        Get probability distributions over placements
+        Returns:
+            rot_probs: (batch_size, num_rotations)
+            x_probs: (batch_size, board_width)
+            y_probs: (batch_size, board_height)
+        """
+        rot_logits, x_logits, y_logits, _ = self.forward(state)
+        rot_probs = F.softmax(rot_logits, dim=1)
+        x_probs = F.softmax(x_logits, dim=1)
+        y_probs = F.softmax(y_logits, dim=1)
+        return rot_probs, x_probs, y_probs
+    
+    def train_from_placements(self, placement_data, optimizer, num_epochs=10):
+        """
+        Train the model from exploration placement data with terminal rewards
+        Args:
+            placement_data: List of dicts with 'state', 'placement', 'terminal_reward'
+            optimizer: Optimizer for training
+            num_epochs: Number of training epochs
+        Returns:
+            Dictionary with detailed loss information
+        """
+        if not placement_data:
+            return {}
+        
+        # Get device from model parameters
+        device = next(self.parameters()).device
+        
+        total_losses = []
+        rot_losses = []
+        x_losses = []
+        value_losses = []
+        
+        criterion = nn.CrossEntropyLoss()
+        value_criterion = nn.MSELoss()
+        
+        for epoch in range(num_epochs):
+            epoch_total_loss = 0
+            epoch_rot_loss = 0
+            epoch_x_loss = 0
+            epoch_value_loss = 0
+            
+            np.random.shuffle(placement_data)
+            
+            for data in placement_data:
+                state = torch.FloatTensor(data['state']).unsqueeze(0).to(device)
+                rotation, x_pos = data['placement']
+                terminal_reward = data['terminal_reward']
+                
+                # Forward pass
+                rot_logits, x_logits, y_logits, value_pred = self.forward(state)
+                
+                # Calculate losses (move targets to device)
+                rot_loss = criterion(rot_logits, torch.LongTensor([rotation]).to(device))
+                x_loss = criterion(x_logits, torch.LongTensor([x_pos]).to(device))
+                value_loss = value_criterion(value_pred, torch.FloatTensor([[terminal_reward]]).to(device))
+                
+                # Weight losses by terminal reward (higher rewards get more weight)
+                reward_weight = max(0.1, (terminal_reward + 100) / 200)  # Normalize to [0.1, 1]
+                total_loss = reward_weight * (rot_loss + x_loss) + value_loss
+                
+                # Backpropagation
+                optimizer.zero_grad()
+                total_loss.backward()
+                optimizer.step()
+                
+                # Accumulate losses for averaging
+                epoch_total_loss += total_loss.item()
+                epoch_rot_loss += rot_loss.item()
+                epoch_x_loss += x_loss.item()
+                epoch_value_loss += value_loss.item()
+            
+            # Average losses for this epoch
+            num_samples = len(placement_data)
+            total_losses.append(epoch_total_loss / num_samples)
+            rot_losses.append(epoch_rot_loss / num_samples)
+            x_losses.append(epoch_x_loss / num_samples)
+            value_losses.append(epoch_value_loss / num_samples)
+        
+        return {
+            'total_loss': total_losses[-1],  # Final epoch loss
+            'rotation_loss': rot_losses[-1],
+            'x_position_loss': x_losses[-1],
+            'value_loss': value_losses[-1],
+            'all_total_losses': total_losses,
+            'all_rotation_losses': rot_losses,
+            'all_x_position_losses': x_losses,
+            'all_value_losses': value_losses
+        }

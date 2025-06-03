@@ -1,0 +1,4 @@
+2025-06-02 20:40:25,976 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-02 20:40:25,976 DEBUG:RESET: Spawn piece: shape=[['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']], pos=(5,-1)
+2025-06-02 20:40:25,976 DEBUG:RESET: Locked positions count=0
+2025-06-02 20:40:25,976 DEBUG:STEP 1: Action=0. Current piece pos=(5,-1). Locked count=0

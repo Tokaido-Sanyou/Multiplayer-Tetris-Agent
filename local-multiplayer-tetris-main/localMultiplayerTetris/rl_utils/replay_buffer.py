@@ -49,7 +49,7 @@ class ReplayBuffer:
                 - grid: 20x10 matrix of pieces, 1 for locked piece and 2 for current piece
                 - next piece (0-7)
                 - hold piece (0-7)
-            action: Integer (0-7) representing the action taken
+            action: One-hot vector (8-dimensional) representing the action taken
             reward: Float reward value
             next_state: Dictionary with same structure as state
             done: Boolean indicating episode end
@@ -63,6 +63,9 @@ class ReplayBuffer:
         state_tensor = self._state_to_tensor(state)
         next_state_tensor = self._state_to_tensor(next_state)
         
+        # Convert one-hot action to scalar for efficient storage
+        action_scalar = np.argmax(action) if hasattr(action, '__len__') else action
+        
         # Extract only necessary info
         if info is not None:
             info = {
@@ -73,23 +76,37 @@ class ReplayBuffer:
             }
         
         # Store transition with max priority
-        self.buffer.append((state_tensor, action, reward, next_state_tensor, done, info))
+        self.buffer.append((state_tensor, action_scalar, reward, next_state_tensor, done, info))
         self.priorities.append(self.max_priority)
     
     def _state_to_tensor(self, state):
         """
         Convert state dictionary to tensor
-        State structure defined in tetris_env.py:
-        - Grid: 20x10 matrix (200 values)
-        - Next piece: scalar shape ID (0-7)
-        - Hold piece: scalar shape ID (0-7)
-        Total: 202 values
+        NEW: Simplified state structure (410 dimensions):
+        - current_piece_grid: 20x10 (200 values)  
+        - empty_grid: 20x10 (200 values)
+        - next_piece: 7 values (one-hot)
+        - metadata: 3 values (rotation, x, y)
+        Total: 410 values (reduced from 1817)
         """
-        grid = torch.FloatTensor(state['grid'].flatten())
-        # Encode next and hold pieces as scalars
-        next_piece = torch.FloatTensor([state['next_piece']])
-        hold_piece = torch.FloatTensor([state['hold_piece']])
-        return torch.cat([grid, next_piece, hold_piece])
+        # Flatten grid components
+        current_piece_flat = torch.FloatTensor(state['current_piece_grid'].flatten())
+        empty_grid_flat = torch.FloatTensor(state['empty_grid'].flatten())
+        
+        # Get one-hot encoding and metadata
+        next_piece = torch.FloatTensor(state['next_piece'])
+        metadata = torch.FloatTensor([
+            state['current_rotation'],
+            state['current_x'],
+            state['current_y']
+        ])
+        
+        return torch.cat([
+            current_piece_flat,  # 200 values
+            empty_grid_flat,     # 200 values
+            next_piece,          # 7 values  
+            metadata             # 3 values
+        ])  # Total: 410 values
     
     def sample(self, batch_size):
         """
@@ -99,10 +116,10 @@ class ReplayBuffer:
         Returns:
             Tuple of (states, actions, rewards, next_states, dones, info, indices, weights)
             where:
-            - states: Tensor of shape (batch_size, 248)
+            - states: Tensor of shape (batch_size, 410)
             - actions: Tensor of shape (batch_size,)
             - rewards: Tensor of shape (batch_size,)
-            - next_states: Tensor of shape (batch_size, 248)
+            - next_states: Tensor of shape (batch_size, 410)
             - dones: Tensor of shape (batch_size,)
             - info: List of info dictionaries
             - indices: Array of sampled indices
@@ -151,4 +168,4 @@ class ReplayBuffer:
     
     def __len__(self):
         """Return current size of buffer"""
-        return len(self.buffer) 
+        return len(self.buffer)

@@ -1,7 +1,16 @@
 import pygame
 import random
-from .constants import top_left_x, play_width, play_height, block_size, mid_x, mid_y, s_width, s_height, top_left_y, shapes
-from .piece_utils import convert_shape_format, valid_space
+
+# Handle both direct execution and module import
+try:
+    from .constants import top_left_x, play_width, play_height, block_size, mid_x, mid_y, s_width, s_height, top_left_y, shapes
+    from .piece_utils import convert_shape_format, valid_space
+    from .piece import Piece
+except ImportError:
+    # Direct execution - imports without relative paths
+    from constants import top_left_x, play_width, play_height, block_size, mid_x, mid_y, s_width, s_height, top_left_y, shapes
+    from piece_utils import convert_shape_format, valid_space
+    from piece import Piece
 
 def create_grid(locked_positions={}):
     # create a blank (black) 2-d array grid
@@ -26,7 +35,6 @@ def check_lost(positions):
     return False
 
 def get_shape_from_index(index):
-    from .piece import Piece
     piece = Piece(5, -1, shapes[index])  # Spawns at y = -1
     if index == 2:  # I piece
         piece.rotation = 1
