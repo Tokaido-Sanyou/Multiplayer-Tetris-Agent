@@ -118,17 +118,16 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                         episode_max_level = max(episode_max_level, info.get('level', 0))
                         episode_pieces_placed += int(info.get('piece_placed', False))
                         
-                        # DEBUG: Replay buffer & batch training disabled for debugging
-                        # Store transition in replay buffer (use raw observation dictionaries)
-                        # agent.memory.push(obs, action, reward, next_obs, done, info)
+                        # Store transition in replay buffer
+                        agent.memory.push(obs, action, reward, next_obs, done, info)
                         
                         # Train agent
-                        # losses = agent.train()
-                        # if losses is not None:
-                        #     actor_loss, critic_loss = losses
-                        #     episode_actor_loss += actor_loss
-                        #     episode_critic_loss += critic_loss
-                        #     train_steps += 1
+                        losses = agent.train()
+                        if losses is not None:
+                            actor_loss, critic_loss = losses
+                            episode_actor_loss += actor_loss
+                            episode_critic_loss += critic_loss
+                            train_steps += 1
                         
                         # Update state and observation
                         state = next_state
@@ -220,7 +219,7 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                         agent.save(f'checkpoints/actor_critic_episode_{episode + 1}.pt')
                         logging.info(f"Saved checkpoint at episode {episode + 1}")
                     except Exception as e:
-                        logging.error(f"Error saving checkpoint: {str(e)}")
+                        logging.error(f"Error saving checkpoint: {e}")
                 
                 # Evaluate agent
                 if (episode + 1) % eval_interval == 0 and not no_eval:

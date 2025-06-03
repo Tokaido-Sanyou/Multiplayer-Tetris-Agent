@@ -172,7 +172,7 @@ class TetrisEnv(gym.Env):
             highest_y = min(y for _, y in new_positions)
             if prev and highest_y < prev['max_h']:
                 reward += 0.01 * (prev['max_h'] - highest_y)
-        return reward
+        return reward + 0.2
 
     
     def _adjacency_reward(self, positions):
