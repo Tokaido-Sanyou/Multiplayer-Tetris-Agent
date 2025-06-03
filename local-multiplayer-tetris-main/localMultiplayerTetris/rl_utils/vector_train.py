@@ -31,11 +31,16 @@ def _sanitize_space_random(space):
     Colab).  Clearing the attribute (or replacing with *None*) avoids the
     serialization.
     """
-    if hasattr(space, "np_random"):
-        try:
-            space.np_random = None
-        except Exception:
-            pass
+    # For all Gym spaces the *real* attribute is _np_random
+    if hasattr(space, "_np_random"):
+        space._np_random = None
+
+    # Old Gym also exposes a property `np_random`; we blank it defensively.
+    try:
+        if hasattr(space, "np_random"):
+            space.np_random = None          # may raise, hence try/except
+    except Exception:
+        space.__dict__.pop("np_random", None)
 
     # Recurse into composite spaces
     if isinstance(space, spaces.Dict):
@@ -180,7 +185,7 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
     # Create vectorized environments
     # Important: Each environment in AsyncVectorEnv runs in a separate process,
     # so they need to be picklable. Ensure TetrisEnv and its components are.
-    logger.debug(f"train_vectorized: About to create SyncVectorEnv with {num_envs} environments (switched from AsyncVectorEnv for debugging).")
+    logger.debug(f"train_vectorized: About to create AsyncVectorEnv with {num_envs} environments (switched from AsyncVectorEnv for debugging).")
     # envs = AsyncVectorEnv([make_env(i, seed=i, headless=True) for i in range(num_envs)])
     envs = SyncVectorEnv([make_env(i, seed=i, headless=True) for i in range(num_envs)]) # DEBUG: Using SyncVectorEnv
     logger.debug(f"train_vectorized: SyncVectorEnv created: {envs}")
