@@ -371,11 +371,12 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
                 total_episodes_completed += 1
                 completed_episodes_this_iteration[i] +=1
 
-                logger.info(
-                    f"Env {i}, Episode {completed_episodes_this_iteration[i]} finished. "
-                    f"Reward: {episode_rewards[i]:.2f}, Length: {episode_lengths[i]}, "
-                    f"Lines: {episode_lines[i]}, Score: {episode_scores[i]}"
-                )
+                if verbose:
+                    logger.info(
+                        f"Env {i}, Episode {completed_episodes_this_iteration[i]} finished. "
+                        f"Reward: {episode_rewards[i]:.2f}, Length: {episode_lengths[i]}, "
+                        f"Lines: {episode_lines[i]}, Score: {episode_scores[i]}"
+                    )
                 # Log to TensorBoard
                 writer.add_scalar(f'Train/Env{i}/Reward', episode_rewards[i], total_episodes_completed)
                 writer.add_scalar(f'Train/Env{i}/Length', episode_lengths[i], total_episodes_completed)
