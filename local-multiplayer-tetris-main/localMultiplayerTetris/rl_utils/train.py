@@ -11,6 +11,203 @@ from torch.distributions import Categorical
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import queue
+import pickle
+import argparse
+
+class ExpertTrajectory:
+    """Container for expert trajectories with metadata"""
+    def __init__(self, states, actions, rewards, next_states, dones, infos, total_reward, lines_cleared):
+        self.states = states
+        self.actions = actions
+        self.rewards = rewards
+        self.next_states = next_states
+        self.dones = dones
+        self.infos = infos
+        self.total_reward = total_reward
+        self.lines_cleared = lines_cleared
+
+def collect_expert_trajectories(model_path, n_trajectories=100, max_steps=1000):
+    """
+    Collect expert trajectories from a trained DQN model
+    
+    Args:
+        model_path: Path to trained DQN model
+        n_trajectories: Number of trajectories to collect
+        max_steps: Maximum steps per trajectory
+    
+    Returns:
+        List of ExpertTrajectory objects
+    """
+    # Initialize environment and agent
+    env = TetrisEnv(single_player=True, headless=True)
+    state_dim = 202  # 20x10 grid + next_piece + hold_piece
+    action_dim = 8   # 8 possible actions
+    
+    # Load trained agent
+    from .dqn_agent import DQNAgent
+    agent = DQNAgent(state_dim, action_dim)
+    agent.load(model_path)
+    agent.epsilon = 0  # No exploration during trajectory collection
+    
+    trajectories = []
+    
+    for i in range(n_trajectories):
+        states, actions, rewards = [], [], []
+        next_states, dones, infos = [], [], []
+        total_reward = 0
+        lines_cleared = 0
+        
+        state = env.reset()
+        done = False
+        step = 0
+        
+        while not done and step < max_steps:
+            # Select action without exploration
+            with torch.no_grad():
+                action = agent.select_action(state)
+            
+            # Take action
+            next_state, reward, done, info = env.step(action)
+            
+            # Store transition
+            states.append(state)
+            actions.append(action)
+            rewards.append(reward)
+            next_states.append(next_state)
+            dones.append(done)
+            infos.append(info)
+            
+            # Update metrics
+            total_reward += reward
+            lines_cleared += info.get('lines_cleared', 0)
+            
+            # Update state
+            state = next_state
+            step += 1
+        
+        # Create trajectory object
+        trajectory = ExpertTrajectory(
+            states=states,
+            actions=actions,
+            rewards=rewards,
+            next_states=next_states,
+            dones=dones,
+            infos=infos,
+            total_reward=total_reward,
+            lines_cleared=lines_cleared
+        )
+        
+        trajectories.append(trajectory)
+        
+        if (i + 1) % 10 == 0:
+            logging.info(f"Collected {i + 1}/{n_trajectories} trajectories")
+            logging.info(f"Average Reward: {total_reward:.2f}")
+            logging.info(f"Lines Cleared: {lines_cleared}")
+    
+    env.close()
+    return trajectories
+
+def save_trajectories(trajectories, save_path):
+    """Save trajectories to file"""
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    with open(save_path, 'wb') as f:
+        pickle.dump(trajectories, f)
+
+def load_trajectories(load_path):
+    """Load trajectories from file"""
+    with open(load_path, 'rb') as f:
+        return pickle.load(f)
+
+class PretrainedDiscriminator(nn.Module):
+    """
+    Discriminator network pre-trained on expert trajectories
+    """
+    def __init__(self, state_dim, action_dim):
+        super(PretrainedDiscriminator, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(state_dim + action_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, state, action):
+        x = torch.cat([state, action], dim=1)
+        return self.network(x)
+
+def pretrain_discriminator(expert_trajectories, discriminator, device, batch_size=128, epochs=10):
+    """
+    Pretrain discriminator on expert trajectories
+    
+    Args:
+        expert_trajectories: List of ExpertTrajectory objects
+        discriminator: Discriminator network
+        device: torch device
+        batch_size: Batch size for training
+        epochs: Number of epochs to train
+    """
+    optimizer = optim.Adam(discriminator.parameters(), lr=3e-4)
+    
+    # Prepare expert data
+    expert_states = []
+    expert_actions = []
+    for traj in expert_trajectories:
+        expert_states.extend(traj.states)
+        expert_actions.extend(traj.actions)
+    
+    expert_states = torch.FloatTensor(np.array([
+        np.concatenate([
+            s['grid'].flatten(),
+            [s['next_piece']],
+            [s['hold_piece']]
+        ])
+        for s in expert_states
+    ])).to(device)
+    
+    expert_actions = torch.LongTensor(expert_actions).to(device)
+    
+    # Convert actions to one-hot
+    action_onehot = torch.zeros(len(expert_actions), 8).to(device)
+    action_onehot.scatter_(1, expert_actions.unsqueeze(1), 1)
+    
+    dataset_size = len(expert_states)
+    
+    for epoch in range(epochs):
+        total_loss = 0
+        batches = 0
+        
+        # Shuffle data
+        indices = torch.randperm(dataset_size)
+        expert_states = expert_states[indices]
+        action_onehot = action_onehot[indices]
+        
+        for i in range(0, dataset_size, batch_size):
+            batch_states = expert_states[i:i+batch_size]
+            batch_actions = action_onehot[i:i+batch_size]
+            
+            # Generate random policy data
+            random_actions = torch.zeros_like(batch_actions)
+            random_indices = torch.randint(0, 8, (len(batch_states),))
+            random_actions.scatter_(1, random_indices.unsqueeze(1), 1)
+            
+            # Train discriminator
+            optimizer.zero_grad()
+            
+            expert_preds = discriminator(batch_states, batch_actions)
+            random_preds = discriminator(batch_states, random_actions)
+            
+            loss = -(torch.log(expert_preds + 1e-8) + torch.log(1 - random_preds + 1e-8)).mean()
+            
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+            batches += 1
+        
+        avg_loss = total_loss / batches
+        logging.info(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}")
 
 class Discriminator(nn.Module):
     """
@@ -85,15 +282,17 @@ def preprocess_state(state):
     hold_piece = np.array([state['hold_piece']])
     return np.concatenate([grid, next_piece, hold_piece])
 
-def train_mairl(num_agents=4, num_episodes=1000, save_interval=100, eval_interval=50):
+def train_mairl(num_agents=4, num_episodes=1000, save_interval=100, eval_interval=50, 
+                expert_trajectories_path=None):
     """
-    Train multiple agents using MA-AIRL
+    Train multiple agents using MA-AIRL with optional expert trajectories
     
     Args:
         num_agents: Number of agents to train simultaneously
         num_episodes: Number of episodes to train for
         save_interval: Save models every N episodes
         eval_interval: Evaluate agents every N episodes
+        expert_trajectories_path: Path to expert trajectories file (optional)
     """
     # Create directories
     os.makedirs('checkpoints/mairl', exist_ok=True)
@@ -126,6 +325,16 @@ def train_mairl(num_agents=4, num_episodes=1000, save_interval=100, eval_interva
         agent.to(device)
     for disc in discriminators:
         disc.to(device)
+    
+    # Load and pretrain on expert trajectories if provided
+    if expert_trajectories_path:
+        expert_trajectories = load_trajectories(expert_trajectories_path)
+        logging.info(f"Loaded {len(expert_trajectories)} expert trajectories")
+        
+        # Pretrain discriminators
+        for i, disc in enumerate(discriminators):
+            logging.info(f"Pretraining discriminator {i + 1}/{num_agents}")
+            pretrain_discriminator(expert_trajectories, disc, device)
     
     for episode in range(num_episodes):
         # Reset environments
@@ -313,11 +522,46 @@ def evaluate_mairl_agents(agents, num_episodes=5):
     return eval_rewards
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--collect-expert', action='store_true',
+                      help='Collect expert trajectories from trained DQN')
+    parser.add_argument('--dqn-model', type=str,
+                      help='Path to trained DQN model for collecting expert trajectories')
+    parser.add_argument('--n-trajectories', type=int, default=100,
+                      help='Number of expert trajectories to collect')
+    parser.add_argument('--train-mairl', action='store_true',
+                      help='Train agents using MA-AIRL')
+    parser.add_argument('--expert-trajectories', type=str,
+                      help='Path to expert trajectories file for MA-AIRL training')
+    parser.add_argument('--num-agents', type=int, default=4,
+                      help='Number of agents for MA-AIRL training')
+    parser.add_argument('--num-episodes', type=int, default=1000,
+                      help='Number of episodes for MA-AIRL training')
+    
+    args = parser.parse_args()
+    
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     
-    # Train agents
-    train_mairl(num_agents=4, num_episodes=1000) 
+    if args.collect_expert:
+        if not args.dqn_model:
+            raise ValueError("Must provide --dqn-model when collecting expert trajectories")
+        
+        trajectories = collect_expert_trajectories(
+            args.dqn_model,
+            n_trajectories=args.n_trajectories
+        )
+        
+        save_path = 'expert_trajectories.pkl'
+        save_trajectories(trajectories, save_path)
+        logging.info(f"Saved {len(trajectories)} expert trajectories to {save_path}")
+    
+    if args.train_mairl:
+        train_mairl(
+            num_agents=args.num_agents,
+            num_episodes=args.num_episodes,
+            expert_trajectories_path=args.expert_trajectories
+        ) 
