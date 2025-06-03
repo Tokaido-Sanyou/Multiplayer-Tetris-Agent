@@ -145,11 +145,19 @@ class ActorCriticAgent:
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
         self.schedule_episodes = schedule_episodes
+        # Pre-compute exponential decay rate so that epsilon reaches (approximately) epsilon_end
+        # after `schedule_episodes` updates: epsilon_t = epsilon_start * decay_rate^t.
+        # decay_rate = (epsilon_end / epsilon_start)^(1 / schedule_episodes)
+        # Handle edge-cases where values could be equal or zero.
+        if epsilon_start > 0 and epsilon_end > 0 and epsilon_end < epsilon_start:
+            self._eps_decay_rate = (epsilon_end / epsilon_start) ** (1.0 / schedule_episodes)
+        else:
+            # Fallback to a default mild decay if parameters are degenerate
+            self._eps_decay_rate = 0.995
+        
         # Initialize current epsilon, gamma, and episode count
         self.epsilon = epsilon_start
-        self.epsilon_decay = (self.epsilon - self.epsilon_end) / self.schedule_episodes
         self.gamma = self.gamma_start
-        self.gamma_decay = (self.gamma_start - self.gamma_end) / self.schedule_episodes
         self.current_episode = 0
         self.top_k = top_k_ac
         
@@ -274,12 +282,13 @@ class ActorCriticAgent:
 
     def update_schedules(self, total_completed_episodes): # Renamed from update_epsilon and added total_completed_episodes
         """Update epsilon and gamma schedules based on total completed episodes."""
-        # Compute scheduling fraction
-        # self.current_episode += 1 # Removed: episode count managed by training loop
+        # --- Exponential epsilon decay ---
+        # ε_t = max(ε_end, ε_start * decay_rate^t)
+        self.epsilon = max(self.epsilon_end,
+                           self.epsilon_start * (self._eps_decay_rate ** total_completed_episodes))
+        
+        # --- (Optional) linear gamma schedule preserved ---
         frac = min(1.0, total_completed_episodes / self.schedule_episodes)
-        # Update epsilon (exploration rate)
-        self.epsilon = self.epsilon_start + frac * (self.epsilon_end - self.epsilon_start)
-        # Update gamma (discount factor)
         self.gamma = self.gamma_start + frac * (self.gamma_end - self.gamma_start)
     
     def train(self):
