@@ -63,17 +63,33 @@ class UnifiedTrainer:
         self.exploration_mode = getattr(config, 'exploration_mode', 'rnd')  # 'rnd', 'random', 'deterministic'
         
         if self.exploration_mode == 'rnd':
-            from .rnd_exploration import RNDExplorationActor
+            try:
+                from .rnd_exploration import RNDExplorationActor
+            except ImportError:
+                # Direct execution fallback
+                from rnd_exploration import RNDExplorationActor
             self.exploration_actor = RNDExplorationActor(self.env)
         elif self.exploration_mode == 'random':
-            from .rnd_exploration import TrueRandomExplorer
+            try:
+                from .rnd_exploration import TrueRandomExplorer
+            except ImportError:
+                # Direct execution fallback
+                from rnd_exploration import TrueRandomExplorer
             self.exploration_actor = TrueRandomExplorer(self.env)
         elif self.exploration_mode == 'deterministic':
-            from .rnd_exploration import DeterministicTerminalExplorer
+            try:
+                from .rnd_exploration import DeterministicTerminalExplorer
+            except ImportError:
+                # Direct execution fallback
+                from rnd_exploration import DeterministicTerminalExplorer
             self.exploration_actor = DeterministicTerminalExplorer(self.env)
         else:
             # Default to RND if unknown mode
-            from .rnd_exploration import RNDExplorationActor
+            try:
+                from .rnd_exploration import RNDExplorationActor
+            except ImportError:
+                # Direct execution fallback
+                from rnd_exploration import RNDExplorationActor
             self.exploration_actor = RNDExplorationActor(self.env)
             self.exploration_mode = 'rnd'
         
@@ -99,7 +115,7 @@ class UnifiedTrainer:
         
         # Data storage
         self.exploration_data = []
-        self.experience_buffer = ReplayBuffer(config.buffer_size)
+        self.experience_buffer = ReplayBuffer(config.buffer_size, device=self.device)  # CUDA optimization
         
         # Logging
         self.writer = SummaryWriter(log_dir=config.log_dir)
@@ -559,7 +575,7 @@ class UnifiedTrainer:
                     # Estimate goal achievement potential for this action
                     # Use state model to predict value of this action choice
                     with torch.no_grad():
-                        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+                        state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
                         goal_vector = self.state_model.get_placement_goal_vector(state_tensor)
                         
                         if goal_vector is not None:
@@ -910,8 +926,8 @@ class UnifiedTrainer:
         """
         try:
             # Calculate state similarity between achieved state and goal state
-            achieved_tensor = torch.FloatTensor(achieved_state).unsqueeze(0).to(self.device)
-            goal_tensor = torch.FloatTensor(goal_state).unsqueeze(0).to(self.device)
+            achieved_tensor = torch.tensor(achieved_state, dtype=torch.float32, device=self.device).unsqueeze(0)
+            goal_tensor = torch.tensor(goal_state, dtype=torch.float32, device=self.device).unsqueeze(0)
             
             # Cosine similarity for overall state alignment
             overall_similarity = F.cosine_similarity(achieved_tensor, goal_tensor, dim=1).item()
@@ -1207,9 +1223,9 @@ class UnifiedTrainer:
         else:
             self.spatial_validation_count = 1
             
-        # Log every 100th validation for monitoring
-        if self.spatial_validation_count % 100 == 0:
-            print(f"     📊 Spatial validation #{self.spatial_validation_count}: active={active_blocks_count}, occupied_from_empty={occupied_from_empty}")
+        # Log every 100th validation for monitoring - DISABLED to reduce console spam
+        # if self.spatial_validation_count % 100 == 0:
+        #     print(f"     📊 Spatial validation #{self.spatial_validation_count}: active={active_blocks_count}, occupied_from_empty={occupied_from_empty}")
         
         # Concatenate all components: 200 + 200 + 7 + 3 = 410 (complete active block representation)
         state_vector = np.concatenate([
@@ -1429,8 +1445,8 @@ class UnifiedTrainer:
         
         try:
             # Convert state to tensor for state model
-            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0).to(self.device)
+            state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+            next_state_tensor = torch.tensor(next_state, dtype=torch.float32, device=self.device).unsqueeze(0)
             
             # Get goal vector from state model
             with torch.no_grad():
@@ -1616,8 +1632,8 @@ class UnifiedTrainer:
         """
         try:
             # Calculate how well the attempt action aligns with the achieved outcome
-            attempt_tensor = torch.FloatTensor(attempt_state).unsqueeze(0).to(self.device)
-            achieved_tensor = torch.FloatTensor(achieved_state).unsqueeze(0).to(self.device)
+            attempt_tensor = torch.tensor(attempt_state, dtype=torch.float32, device=self.device).unsqueeze(0)
+            achieved_tensor = torch.tensor(achieved_state, dtype=torch.float32, device=self.device).unsqueeze(0)
             
             # Use state model to evaluate the attempt action
             with torch.no_grad():

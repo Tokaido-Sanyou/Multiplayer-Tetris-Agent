@@ -1,29 +1,38 @@
-# Multiplayer Tetris Agent - Hierarchical Reinforcement Learning System
+# Multiplayer Tetris Agent - Revolutionary Dream-Enhanced Reinforcement Learning System
 
-A sophisticated multi-agent reinforcement learning system for Tetris that implements a 6-phase hierarchical training pipeline with goal-conditioned policies, Random Network Distillation (RND) exploration, and adaptive reward systems.
+A sophisticated multi-agent reinforcement learning system for Tetris that implements both a **6-phase hierarchical training pipeline** and a revolutionary **8-phase dream-enhanced training system** with explicit goal achievement through synthetic dream practice.
 
 ## 🎯 System Overview
 
-This project implements a state-of-the-art hierarchical RL system for Tetris using:
+This project implements two state-of-the-art RL training systems for Tetris:
+
+### **🌙 NEW: Dream-Enhanced Training System**
+Revolutionary approach where actor learns explicit goal achievement through synthetic dream practice:
+- **Dream Environment**: Simulates realistic state transitions biased toward goal achievement  
+- **Explicit Goal Matcher**: Neural network learning direct goal→action mapping
+- **Dream Trajectory Generator**: Creates synthetic perfect goal achievement sequences
+- **Dream-Reality Bridge**: Transfers dream knowledge to real actor execution
+- **8-Phase Training**: Enhanced pipeline with dream generation and transfer phases
+- **Expected Improvement**: Goal success rate from 8.8% → 60-80%
+
+### **🎯 Standard Hierarchical Training System** 
 - **State Model**: Predicts optimal piece placements from current game states
 - **Goal-Conditioned Actor-Critic**: Uses state model outputs as goals for action selection with future state prediction
 - **Future Reward Predictor**: Estimates long-term value of terminal block placements
 - **Enhanced RND Exploration**: Terminal value-based curiosity with novelty tracking for unvisited states
 - **Adaptive Reward System**: Piece presence rewards that decay over training
-- **Unified Training Pipeline**: 6-phase algorithm for robust learning with comprehensive monitoring
+- **6-Phase Training Pipeline**: Robust learning with comprehensive monitoring
 
 ### Key Features
+- ✅ **🌙 REVOLUTIONARY DREAM FRAMEWORK**: Explicit goal achievement through synthetic practice
 - ✅ **Goal-Conditioned Learning**: State model outputs directly feed as goals to the actor
 - ✅ **Enhanced RND Exploration**: Terminal value-based curiosity with novelty detection for unvisited states
 - ✅ **Future State Prediction**: Actor-critic enhanced with future state prediction head
 - ✅ **Adaptive Piece Presence Rewards**: Rewards decrease from 1.0 to 0.0 over first half of training
-- ✅ **Streamlined Phase Reporting**: Clean console output with immediate statistics after each phase
+- ✅ **Deterministic Terminal State Exploration**: Systematic coverage of state space
 - ✅ **Comprehensive Model Persistence**: Save/load all components including RND state and future predictors
 - ✅ **Consistent Network Parameters**: Centralized configuration across all components
-- ✅ **Lines Cleared Tracking**: Episode-by-episode performance monitoring
-- ✅ **Blended Reward Prediction**: Future reward predictor integrates with state model
-- ✅ **Extended Training**: 1000 total episodes across 50 batches
-- ✅ **Updated Feature Weights**: Reduced penalty weights for more balanced learning
+- ✅ **Multi-Attempt + HER System**: Enhanced exploration with hindsight experience replay
 
 ## 🏗️ Architecture
 
@@ -59,6 +68,44 @@ State model outputs optimal placements as goal vectors:
 - Value Prediction: 1 value (terminal reward estimate)
 - Confidence Score: 1 value (placement confidence)
 Total: 36 dimensions
+```
+
+## 🌙 NEW: Dream-Enhanced Training Components
+
+### 1. TetrisDreamEnvironment
+**Purpose**: Simulates realistic state transitions biased toward goal achievement
+```python
+Input: Current state (410D) + Action + Goal vector (36D)
+Output: Dream next state (410D) biased toward goal completion
+Bias Strength: 0.7 (configurable)
+Noise Level: 0.1 (prevents overfitting)
+```
+
+### 2. ExplicitGoalMatcher
+**Purpose**: Learns direct goal→action mapping through dream practice
+```python
+State Encoder: 410 → 256 → 128
+Goal Encoder: 36 → 128 → 64  
+Combined: 192 → 256 → 128 → 8 (softmax)
+Training: Supervised learning on dream trajectories
+```
+
+### 3. DreamTrajectoryGenerator
+**Purpose**: Creates synthetic trajectories where actor practices goal achievement
+```python
+Dream Length: 15-20 steps per trajectory
+Quality Scoring: 0-1 based on goal achievement
+Quality Threshold: 0.6 for high-quality dreams
+Trajectory Buffer: 10,000 experiences
+```
+
+### 4. DreamRealityBridge
+**Purpose**: Transfers dream learning to real actor execution
+```python
+Dream Training Phase: Goal matcher learns from synthetic trajectories
+Reality Transfer Phase: Knowledge distillation to actor network
+Dream Guidance: Weighted blending of dream + actor policies
+Dream Weaning: Gradual reduction from 1.0 to 0.1 over training
 ```
 
 ## 🧠 Neural Network Components
@@ -98,7 +145,7 @@ Outputs:
   - Future value (1 value)
 ```
 
-### 4. NEW: Random Network Distillation (RND)
+### 4. Random Network Distillation (RND)
 **Purpose**: Provides intrinsic motivation for curiosity-driven exploration
 
 #### Random Target Network (Fixed)
@@ -118,16 +165,57 @@ Output: Predicted features (64D)
 Loss: MSE(predicted_features, target_features)
 ```
 
-#### Intrinsic Reward Calculation
-```python
-prediction_error = MSE(predictor_output, target_output)
-intrinsic_reward = normalize(prediction_error)  # Running statistics
-exploration_bonus = intrinsic_reward * scale_factor
-```
+## 🔄 Training Algorithms
 
-## 🔄 6-Phase Training Algorithm
+### 🌙 8-Phase Dream-Enhanced Training Algorithm
 
-### Phase 1: Enhanced Terminal Value-Based RND Exploration
+**Revolutionary training system with explicit goal achievement through synthetic dreams:**
+
+#### Phase 1: Enhanced Terminal Value-Based RND Exploration
+- Same as standard training: **Enhanced RND Exploration Actor** for curiosity-driven exploration
+- Records terminal states with enhanced rewards for dream learning
+
+#### Phase 2: State Model Learning  
+- Trains state model on terminal placement data to generate placement goals
+- Outputs confidence scores for placement quality estimation
+
+#### Phase 3: Future Reward Prediction
+- Trains future reward predictor on terminal placements for value estimation
+- Blends predictions with state model values using confidence weighting
+
+#### **Phase 4: 🌙 DREAM GENERATION (NEW)**
+- **Dream Trajectory Generator** creates synthetic perfect goal achievement sequences
+- **Explicit Goal Matcher** learns direct goal→action mapping through supervised learning on dreams
+- Generates 30+ dream episodes per batch with 15-20 steps each
+- Tracks dream quality scores (0-1) based on goal achievement success
+
+#### **Phase 5: 🌉 DREAM-REALITY TRANSFER (NEW)**
+- **Dream-Reality Bridge** transfers dream knowledge to real actor execution
+- Knowledge distillation: Actor learns to mimic goal matcher's optimal actions
+- 150+ transfer steps per batch with gradient clipping for stability
+- Validates dream quality (>0.6 threshold) before transfer
+
+#### **Phase 6: 🎮 DREAM-GUIDED EXPLOITATION (ENHANCED)**
+- Actor uses **dream guidance** for real environment actions
+- Weighted blending: `dream_weight × dream_policy + (1-dream_weight) × actor_policy`
+- **Dream weaning**: Gradually reduce dream dependence from 1.0 to 0.1 over training
+- Multi-attempt mechanism with hindsight experience replay for enhanced learning
+
+#### Phase 7: Dream-Enhanced PPO Training
+- Standard PPO training but with dream-enhanced actor network
+- Actor has learned explicit goal achievement from dream practice
+
+#### Phase 8: Dual Evaluation (Goal + Game Performance)
+- Evaluates both goal achievement rate and traditional game performance
+- Tracks alignment between goal-focused learning and actual game success
+
+**Expected Results**: Goal success rate improvement from 8.8% → 60-80%
+
+---
+
+### 🎯 6-Phase Standard Hierarchical Training Algorithm
+
+#### Phase 1: Enhanced Terminal Value-Based RND Exploration
 - **Enhanced RND Exploration Actor** uses terminal value prediction for curiosity-driven exploration
 - **Terminal Value Focus**: RND rewards based on terminal state values rather than prediction error
 - **Piece-Focused Episodes**: Each episode explores one specific piece type (I, O, T, S, Z, J, L) for consistent learning
@@ -139,19 +227,19 @@ exploration_bonus = intrinsic_reward * scale_factor
 - **Distinct State Tracking**: Reports new terminal states discovered per batch for progress monitoring
 - Collects (state, placement, enhanced_terminal_reward, resulting_state, novelty_score, target_piece_type) tuples
 
-### Phase 2: State Model Learning
+#### Phase 2: State Model Learning
 - Trains state model on terminal placement data with intrinsic motivation
 - Learns to predict optimal rotations and positions
 - Uses terminal rewards + intrinsic rewards to weight training importance
 - Outputs confidence scores for placement quality
 
-### Phase 3: Future Reward Prediction
+#### Phase 3: Future Reward Prediction
 - Trains future reward predictor on terminal placements
 - Learns to estimate long-term consequences
 - Blends predictions with state model values using confidence weighting
 - Focuses on terminal state value estimation with RND-enhanced data
 
-### Phase 4: Goal-Conditioned Exploitation Episodes  
+#### Phase 4: Goal-Conditioned Exploitation Episodes  
 - **Goal-Conditioned Policy Rollouts** with adaptive piece presence rewards
 - State model generates optimal placement goals
 - Actor-critic uses goals for action selection
@@ -159,81 +247,103 @@ exploration_bonus = intrinsic_reward * scale_factor
 - Tracks lines cleared, rewards, and episode length
 - Collects experience for policy improvement
 
-### Phase 5: PPO Training
+#### Phase 5: PPO Training
 - Trains actor-critic with PPO clipping using enhanced rewards
 - Incorporates auxiliary state model loss
 - Updates both policy and value functions
 - Uses prioritized experience replay with RND-enhanced data
 
-### Phase 6: Evaluation
+#### Phase 6: Evaluation
 - Pure exploitation episodes (ε = 0) with piece presence rewards
 - Measures policy performance with adaptive reward system
 - Tracks improvement over training with RND statistics
 
-## 🎯 Reward Function Design
+## 🚀 Training Commands
 
-### Environment Rewards
-```python
-# Line clearing rewards (base scores)
-LINE_CLEAR_BASE = {
-    1: 100,    # Single line
-    2: 200,    # Double lines  
-    3: 400,    # Triple lines
-    4: 1600    # Tetris (4 lines)
-}
+### **🌙 Dream-Enhanced Training (RECOMMENDED)**
+```bash
+# Navigate to the RL utils directory
+cd local-multiplayer-tetris-main/localMultiplayerTetris/rl_utils
 
-# Additional factors
-LEVEL_MULTIPLIER = True      # Multiply by (level + 1)
-GAME_OVER_PENALTY = -200     # Heavy penalty for losing
-TIME_PENALTY = -0.01         # Small penalty per step
+# Run dream-enhanced training with minimal configuration
+python unified_trainer_dream.py --num_batches 1 --dream_episodes 5
+
+# Run extended dream-enhanced training  
+python unified_trainer_dream.py --num_batches 25 --dream_episodes 30
+
+# Run with deterministic exploration for reproducible results
+python unified_trainer_dream.py --num_batches 10 --dream_episodes 20 --exploration_mode deterministic
+
+# Run with visualization for the last episode of each batch
+python unified_trainer_dream.py --num_batches 5 --dream_episodes 15 --visualize
 ```
 
-### Feature-Based Shaping (UPDATED WEIGHTS)
-```python
-# Reduced penalty weights for more balanced learning
-HOLE_WEIGHT = 0.5           # Penalty per hole created (reduced from 4.0)
-MAX_HEIGHT_WEIGHT = 5.0     # Penalty for tall stacks (reduced from 10.0)
-BUMPINESS_WEIGHT = 0.2      # Penalty for uneven surface (reduced from 1.0)
+### **🎯 Standard Hierarchical Training**
+```bash
+# Navigate to the RL utils directory  
+cd local-multiplayer-tetris-main/localMultiplayerTetris/rl_utils
+
+# Run standard training with RND exploration
+python unified_trainer.py --num_batches 25 --exploration_mode rnd
+
+# Run with deterministic exploration for systematic coverage
+python unified_trainer.py --num_batches 20 --exploration_mode deterministic  
+
+# Run with visualization enabled
+python unified_trainer.py --num_batches 10 --visualize --exploration_mode rnd
 ```
 
-### NEW: Adaptive Piece Presence Reward System
-```python
-# Encourages longer games early in training, phases out as agent improves
-PIECE_PRESENCE_REWARD = 1.0        # Base reward (+1 per step when pieces present)
-PIECE_PRESENCE_DECAY_STEPS = 500   # Decay over first 500 episodes (first half)
-PIECE_PRESENCE_MIN = 0.0           # No reward after episode 500
+### **⚙️ Command Line Options**
 
-# Calculation:
-# Episodes 0-500: reward = +1 per step (if pieces present) * (1.0 - episode/500)
-# Episodes 500+:  reward = 0.0
-# Note: Reward is +1 per step, NOT +num_pieces per step
+#### Dream-Enhanced Training Options:
+```bash
+--num_batches INT        # Number of training batches (default: 25)
+--dream_episodes INT     # Dream episodes per batch (default: 30) 
+--dream_transfer_steps INT # Transfer learning steps (default: 150)
+--exploration_mode STR   # 'rnd', 'random', 'deterministic' (default: 'rnd')
+--visualize             # Enable visualization for last episode per batch
 ```
 
-### RND Intrinsic Motivation
-```python
-# Random Network Distillation parameters
-INTRINSIC_REWARD_SCALE = 10.0      # Scale factor for intrinsic rewards
-RND_LEARNING_RATE = 1e-4           # Learning rate for predictor network
-REWARD_NORMALIZATION = True        # Normalize intrinsic rewards
-REWARD_CLIPPING = [-5.0, 5.0]      # Clip normalized rewards
-
-# Exploration guidance:
-# High prediction error → diverse exploration
-# Low prediction error → conservative exploitation  
+#### Standard Training Options:
+```bash
+--num_batches INT       # Number of training batches (default: 50)
+--exploration_mode STR  # 'rnd', 'random', 'deterministic' (default: 'rnd')  
+--visualize            # Enable visualization for last episode per batch
+--log_dir STR          # Custom logging directory
+--checkpoint_dir STR   # Custom checkpoint directory
 ```
 
-### Exploration rewards (terminal placement evaluation)
-```python
-EXPLORATION_MAX_HEIGHT_WEIGHT = -0.5   # Negative for height
-EXPLORATION_HOLE_WEIGHT = -10.0        # Heavy hole penalty  
-EXPLORATION_BUMPINESS_WEIGHT = -0.1    # Surface smoothness
+### **🧪 Testing and Validation**
+```bash
+# Test the dream framework components
+python test_dream_framework.py
+
+# Test deterministic exploration system
+python test_deterministic_explorer.py
+
+# Test multi-attempt + HER training
+python test_multi_attempt_training.py
+
+# Test system integration
+python test_integration.py
 ```
 
-### State Model Training Weights
-```python
-# Higher terminal rewards get more training weight
-reward_weight = max(0.1, (terminal_reward + 100) / 200)
-total_loss = reward_weight * (rotation_loss + x_loss) + value_loss
+### **📁 Directory Structure**
+```
+local-multiplayer-tetris-main/
+├── localMultiplayerTetris/
+│   ├── rl_utils/
+│   │   ├── unified_trainer_dream.py    # 🌙 Dream-enhanced training
+│   │   ├── unified_trainer.py          # 🎯 Standard training
+│   │   ├── dream_framework.py          # 🌙 Dream components
+│   │   ├── actor_critic.py             # Goal-conditioned actor-critic
+│   │   ├── state_model.py              # Placement prediction model
+│   │   ├── rnd_exploration.py          # RND exploration system
+│   │   └── ...
+│   └── config.py                       # Centralized configuration
+├── test_dream_framework.py             # 🌙 Dream framework tests
+├── test_deterministic_explorer.py      # Deterministic exploration tests
+└── README.md                           # This file
 ```
 
 ## 📊 Streamlined Console Reporting
@@ -308,7 +418,7 @@ At the end of each batch, a clean summary shows key metrics:
 🔮 REWARD PRED: 0.0346
 🎮 EXPLOITATION: 145.7 • 3.2 • 88%
 🏋️ PPO TRAINING: 0.0012 • 0.0023 • 0.0035
-�� EVALUATION: 156.8
+📊 EVALUATION: 156.8
 ================================================================================
 ```
 

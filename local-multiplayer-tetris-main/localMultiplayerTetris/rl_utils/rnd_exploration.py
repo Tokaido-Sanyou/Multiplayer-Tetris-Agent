@@ -573,11 +573,14 @@ class RNDExplorationActor:
     
     def _evaluate_terminal_placement_value(self, rotation, x_pos, piece_shape, current_state, terminal_y_pos=10):
         """
-        Evaluate terminal placement VALUE (not reward) based on game state
-        This represents the actual value of reaching this terminal state
+        Evaluate terminal placement VALUE including LINE CLEARING POTENTIAL
+        CRITICAL FIX: Now includes line clearing rewards - the core Tetris objective!
         """
         # Use updated reward weights from config
         config = self.config.RewardConfig
+        
+        # CRITICAL ADDITION: Calculate line clearing potential and rewards
+        line_clear_value = self._calculate_line_clearing_value(current_state, rotation, x_pos, piece_shape, terminal_y_pos)
         
         # Base value calculations with more diverse factors
         center_distance = abs(x_pos - 4.5)  # Distance from center
@@ -597,20 +600,162 @@ class RNDExplorationActor:
         # Add some game-state specific evaluation
         grid_state_value = self._evaluate_grid_state_value(current_state)
         
-        # Combine all factors for terminal VALUE with much more diversity
+        # ENHANCED: Combine all factors with LINE CLEARING as primary objective
         terminal_value = (
-            grid_state_value +  # Strategic grid position value
-            rotation_bonus +    # Rotation optimality
-            piece_type_bonus -  # Piece type value
-            height_penalty +    # Height strategy penalty
-            position_bonus +    # Position-based bonus
-            placement_noise     # Deterministic but diverse noise
+            line_clear_value * 3.0 +  # 🔥 LINE CLEARING VALUE (3x weight - most important!)
+            grid_state_value +        # Strategic grid position value
+            rotation_bonus +          # Rotation optimality
+            piece_type_bonus -        # Piece type value
+            height_penalty +          # Height strategy penalty
+            position_bonus +          # Position-based bonus
+            placement_noise           # Deterministic but diverse noise
         )
         
         # Clamp to reasonable range
-        terminal_value = max(-50, min(100, terminal_value))
+        terminal_value = max(-100, min(200, terminal_value))  # Expanded range for line clears
         
         return terminal_value
+    
+    def _calculate_line_clearing_value(self, current_state, rotation, x_pos, piece_shape, terminal_y_pos):
+        """
+        CRITICAL NEW METHOD: Calculate line clearing potential and rewards for this placement
+        This is the core Tetris objective that was missing from terminal rewards!
+        
+        Args:
+            current_state: Game state vector
+            rotation, x_pos, piece_shape, terminal_y_pos: Placement parameters
+        Returns:
+            line_clear_value: Value based on line clearing potential and rewards
+        """
+        try:
+            # Extract board state
+            current_piece_grid = current_state[:200].reshape(20, 10)
+            empty_grid = current_state[200:400].reshape(20, 10)
+            
+            # Create combined board state (1 = occupied, 0 = empty)
+            board = 1 - empty_grid  # Invert empty grid to get occupied cells
+            
+            # Simulate placing the piece to see line clearing effects
+            simulated_board = board.copy()
+            
+            # Simple piece placement simulation (approximate)
+            # Place a small footprint around the target position
+            piece_positions = self._get_approximate_piece_positions(rotation, x_pos, terminal_y_pos, piece_shape)
+            
+            for row, col in piece_positions:
+                if 0 <= row < 20 and 0 <= col < 10:
+                    simulated_board[row, col] = 1
+            
+            # Calculate lines that would be cleared
+            lines_cleared = 0
+            cleared_lines = []
+            
+            for row in range(20):
+                if np.sum(simulated_board[row, :]) == 10:  # Full line
+                    lines_cleared += 1
+                    cleared_lines.append(row)
+            
+            # Calculate line clearing rewards (using game config)
+            line_clear_reward = 0
+            if lines_cleared > 0:
+                # Use actual Tetris scoring from config
+                line_clear_base = {1: 100, 2: 200, 3: 400, 4: 1600}
+                line_clear_reward = line_clear_base.get(lines_cleared, lines_cleared * 400)
+                
+                # Add bonus for clearing multiple lines simultaneously
+                if lines_cleared >= 2:
+                    line_clear_reward *= 1.5  # Bonus for double/triple/tetris
+                
+                print(f"     🔥 LINE CLEAR DETECTED! {lines_cleared} lines, reward: {line_clear_reward}")
+            
+            # Calculate line clearing POTENTIAL (near-complete lines)
+            line_potential = 0
+            for row in range(20):
+                filled_cells = np.sum(simulated_board[row, :])
+                if filled_cells >= 8:  # Close to being complete
+                    potential_value = (filled_cells - 7) * 10  # 10, 20, 30 for 8, 9, 10 filled
+                    line_potential += potential_value
+            
+            # Calculate setup value (creating good line clearing opportunities)
+            setup_value = self._calculate_line_clearing_setup_value(simulated_board, cleared_lines)
+            
+            # Total line clearing value
+            total_line_value = line_clear_reward + line_potential + setup_value
+            
+            return total_line_value
+            
+        except Exception as e:
+            print(f"Error calculating line clearing value: {e}")
+            return 0.0  # Fallback to no line clearing value
+    
+    def _get_approximate_piece_positions(self, rotation, x_pos, y_pos, piece_shape):
+        """
+        Get approximate positions where a piece would be placed
+        This is a simplified version - the actual piece shape depends on the piece type
+        """
+        positions = []
+        
+        # Basic piece footprints (simplified)
+        if piece_shape == 0:  # I-piece
+            if rotation % 2 == 0:  # Horizontal
+                positions = [(y_pos, x_pos), (y_pos, x_pos+1), (y_pos, x_pos+2), (y_pos, x_pos+3)]
+            else:  # Vertical
+                positions = [(y_pos, x_pos), (y_pos+1, x_pos), (y_pos+2, x_pos), (y_pos+3, x_pos)]
+        elif piece_shape == 1:  # O-piece
+            positions = [(y_pos, x_pos), (y_pos, x_pos+1), (y_pos+1, x_pos), (y_pos+1, x_pos+1)]
+        elif piece_shape == 2:  # T-piece
+            if rotation == 0:
+                positions = [(y_pos, x_pos-1), (y_pos, x_pos), (y_pos, x_pos+1), (y_pos+1, x_pos)]
+            elif rotation == 1:
+                positions = [(y_pos, x_pos), (y_pos+1, x_pos-1), (y_pos+1, x_pos), (y_pos+2, x_pos)]
+            elif rotation == 2:
+                positions = [(y_pos, x_pos), (y_pos+1, x_pos-1), (y_pos+1, x_pos), (y_pos+1, x_pos+1)]
+            else:  # rotation == 3
+                positions = [(y_pos, x_pos), (y_pos+1, x_pos), (y_pos+1, x_pos+1), (y_pos+2, x_pos)]
+        else:  # Other pieces - simplified footprint
+            positions = [(y_pos, x_pos), (y_pos, x_pos+1), (y_pos+1, x_pos), (y_pos+1, x_pos+1)]
+        
+        # Filter valid positions
+        valid_positions = [(r, c) for r, c in positions if 0 <= r < 20 and 0 <= c < 10]
+        return valid_positions
+    
+    def _calculate_line_clearing_setup_value(self, board, cleared_lines):
+        """
+        Calculate the value of setting up future line clearing opportunities
+        """
+        setup_value = 0
+        
+        # After line clears, check if we've created good opportunities
+        if cleared_lines:
+            # Remove cleared lines and shift board down
+            new_board = board.copy()
+            for line in sorted(cleared_lines, reverse=True):
+                new_board = np.delete(new_board, line, axis=0)
+                new_board = np.vstack([np.zeros((1, 10)), new_board])
+            
+            # Check for new line clearing opportunities
+            for row in range(20):
+                filled_cells = np.sum(new_board[row, :])
+                if filled_cells >= 7:  # Setup for future line clear
+                    setup_value += (filled_cells - 6) * 5
+        
+        # Check for creating wells (good for I-pieces)
+        column_heights = []
+        for col in range(10):
+            height = 0
+            for row in range(20):
+                if board[row, col] == 1:
+                    height = 20 - row
+                    break
+            column_heights.append(height)
+        
+        # Reward creating wells (height differences of 3+)
+        for i in range(len(column_heights) - 1):
+            height_diff = abs(column_heights[i] - column_heights[i + 1])
+            if height_diff >= 3:
+                setup_value += height_diff * 2
+        
+        return setup_value
     
     def _evaluate_grid_state_value(self, state):
         """

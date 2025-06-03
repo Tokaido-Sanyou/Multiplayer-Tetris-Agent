@@ -145,7 +145,7 @@ class TetrisConfig:
         
         # Shared network sizes
         LARGE_HIDDEN = 512       # Large hidden layer size
-        MEDIUM_HIDDEN = 256      # Medium hidden layer size  
+        MEDIUM_HIDDEN = 256      # Medium hidden layer size
         SMALL_HIDDEN = 128       # Small hidden layer size
         TINY_HIDDEN = 64         # Tiny hidden layer size
         
@@ -222,41 +222,41 @@ class TetrisConfig:
         # Device configuration
         DEVICE = 'auto'  # 'auto', 'cuda', 'mps', or 'cpu'
         
-        # Overall training schedule - Extended to 1000 total episodes
-        NUM_BATCHES = 50          # Total training batches  
+        # Overall training schedule - Extended for better convergence
+        NUM_BATCHES = 100         # Increased from 50 - each batch is short so we need more
         BATCH_SIZE = 32            # Experience batch size
         
         # Phase 1: Exploration
-        EXPLORATION_EPISODES = 20   # Episodes per batch for data collection (50 * 20 = 1000 total)
+        EXPLORATION_EPISODES = 30   # Increased from 20 for more data per batch (100 * 30 = 3000 total)
         
         # Phase 2: State Model Training  
-        STATE_TRAINING_SAMPLES = 1000  # Max samples to use per batch
-        STATE_EPOCHS = 5               # Training epochs per batch
-        STATE_LEARNING_RATE = 1e-3
+        STATE_TRAINING_SAMPLES = 1500  # Increased from 1000 for better convergence
+        STATE_EPOCHS = 3               # Reduced from 5 for stability
+        STATE_LEARNING_RATE = 1e-3     # Reduced from 1e-2 for better convergence
         
         # Phase 3: Future Reward Prediction
         REWARD_BATCH_SIZE = 64      # Batch size for reward predictor
-        REWARD_LEARNING_RATE = 1e-3
-        MIN_BUFFER_SIZE = 1000      # Minimum experiences before training
+        REWARD_LEARNING_RATE = 1e-3  # Reduced from 1e-2 for stability
+        MIN_BUFFER_SIZE = 100       # Reduced from 1000 to allow PPO to run earlier
         
         # Phase 4: Exploitation  
-        EXPLOITATION_EPISODES = 20   # Policy rollout episodes per batch (50 * 20 = 1000 total)
+        EXPLOITATION_EPISODES = 30   # Increased from 20 for more experiences (100 * 30 = 3000 total)
         
         # Phase 5: PPO Training
-        PPO_ITERATIONS = 3          # PPO update iterations per batch
+        PPO_ITERATIONS = 5          # Increased from 3 for more training per batch
         PPO_EPOCHS = 4              # Epochs per PPO iteration
-        PPO_BATCH_SIZE = 64         # Batch size for PPO updates
+        PPO_BATCH_SIZE = 32         # Reduced from 64 for smaller buffer compatibility
         PPO_CLIP_RATIO = 0.2        # Clipping parameter
         
         # Phase 6: Evaluation
-        EVAL_EPISODES = 10          # Pure evaluation episodes per batch
+        EVAL_EPISODES = 15          # Increased from 10 for better evaluation statistics
         
         # Episode limits
         MAX_EPISODE_STEPS = 2000    # Maximum steps per episode (extended for longer games)
         
         # Actor-Critic specific parameters
-        ACTOR_LEARNING_RATE = 1e-4
-        CRITIC_LEARNING_RATE = 1e-3
+        ACTOR_LEARNING_RATE = 1e-3
+        CRITIC_LEARNING_RATE = 1e-2
         GAMMA = 0.99                # Discount factor
         
         # Exploration parameters
