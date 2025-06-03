@@ -20,14 +20,33 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.debug("vector_train.py: Script execution started.")
 
+def _sanitize_space_random(space):
+    """Remove or reset np_random attribute from a gym Space to avoid deepcopy issues
+    when SyncVectorEnv batches observation spaces. Gym <0.27 deepcopies the
+    space which fails for numpy Generator objects.
+    """
+    if hasattr(space, "np_random"):
+        try:
+            # Setting to None is enough; it will be re-created on first use.
+            space.np_random = None
+        except Exception:
+            pass
+
 def make_env(env_id, seed, headless=True):
+    """Factory that creates a sanitized TetrisEnv instance for vectorized training."""
     def _init():
         env = TetrisEnv(single_player=True, headless=headless)
-        # It's good practice to seed environments in a vectorized setup
-        # for reproducibility, though TetrisEnv.seed might need to be implemented
-        # if it doesn't exist or doesn't seed all random components.
+        # Seed environment (covers numpy, random, etc.)
         env.seed(seed + env_id)
+
+        # Gym's SyncVectorEnv deep-copies observation/action spaces; deepcopy of
+        # spaces containing a numpy.random.Generator (PCG64) raises a ValueError
+        # on some numpy/gym versions. Clearing the attribute avoids the issue.
+        _sanitize_space_random(env.observation_space)
+        _sanitize_space_random(env.action_space)
+
         return env
+
     return _init
 
 def preprocess_obs_batch(batched_obs_dict, device):
