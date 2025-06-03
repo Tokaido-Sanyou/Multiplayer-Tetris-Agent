@@ -17,20 +17,28 @@ def preprocess_state(state):
     - hold_piece: scalar ID (0-7)
     
     Returns:
-        Flattened array of shape (202,) containing:
+        Flattened array of shape (207,) containing:
         - First 200 values: Flattened grid
         - Next value: next_piece
-        - Last value: hold_piece
+        - hold_piece
+        - current_shape
+        - current_rotation
+        - current_x
+        - current_y
+        - can_hold
     """
-    grid = state['grid'].flatten()
-    next_piece = np.array([state['next_piece']])
-    hold_piece = np.array([state['hold_piece']])
-    curr_shape = np.array([state.get('current_shape', 0)])
-    curr_rot = np.array([state.get('current_rotation', 0)])
-    curr_x = np.array([state.get('current_x', 0)])
-    curr_y = np.array([state.get('current_y', 0)])
-    # Concatenate all features
-    return np.concatenate([grid, next_piece, hold_piece, curr_shape, curr_rot, curr_x, curr_y])
+    # Flatten grid and append metadata scalars
+    grid_flat = state['grid'].flatten().astype(np.float32)  # 200 values
+    metadata = np.array([
+        state['next_piece'],
+        state['hold_piece'],
+        state.get('current_shape', 0),
+        state.get('current_rotation', 0),
+        state.get('current_x', 0),
+        state.get('current_y', 0),
+        state.get('can_hold', 1)
+    ], dtype=np.float32)  # 7 values
+    return np.concatenate([grid_flat, metadata])
 
 def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interval=50):
     """
@@ -247,8 +255,8 @@ def evaluate_agent(env, agent, num_episodes=10):
 if __name__ == '__main__':
     # Create environment and agent
     env = TetrisEnv()
-    state_dim = 206  # 20x10 grid + next_piece + hold_piece + current_shape + current_rotation + current_x + current_y
-    action_dim = 4 * 10  # 4 rotations × 10 columns = 40 actions
+    state_dim = 207  # 200 grid + 7 metadata incl can_hold
+    action_dim = 41  # 40 placement + hold
     agent = ActorCriticAgent(state_dim, action_dim)
     
     # Train agent

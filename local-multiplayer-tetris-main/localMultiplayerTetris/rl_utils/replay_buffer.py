@@ -87,7 +87,8 @@ class ReplayBuffer:
         - current_rotation: rotation index scalar
         - current_x: x-coordinate scalar
         - current_y: y-coordinate scalar
-        Total: 200 + 6 = 206 values
+        - can_hold: binary scalar (1 if can hold, 0 if not)
+        Total: 200 + 7 = 207 values
         """
         grid = torch.FloatTensor(state['grid'].flatten())
         # Scalars: next, hold, curr_shape, rotation, x, y
@@ -97,7 +98,8 @@ class ReplayBuffer:
         curr_rot = torch.FloatTensor([state.get('current_rotation', 0)])
         curr_x = torch.FloatTensor([state.get('current_x', 0)])
         curr_y = torch.FloatTensor([state.get('current_y', 0)])
-        return torch.cat([grid, next_piece, hold_piece, curr_shape, curr_rot, curr_x, curr_y])
+        can_hold = torch.FloatTensor([state.get('can_hold', 1)])
+        return torch.cat([grid, next_piece, hold_piece, curr_shape, curr_rot, curr_x, curr_y, can_hold])
     
     def sample(self, batch_size):
         """

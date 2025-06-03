@@ -35,8 +35,10 @@ class TetrisEnv(gym.Env):
             # Training headless: disable debug logging to file
             logger.setLevel(logging.WARNING)
         
-        # Action space: rotation (0-3) × column (0-9)
-        self.action_space = spaces.MultiDiscrete([4, 10])
+        # Action space:
+        # 0-39 : placement index = rotation*10 + column
+        # 40   : hold current piece
+        self.action_space = spaces.Discrete(41)
         
         # Define observation space
         # Grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
@@ -51,6 +53,7 @@ class TetrisEnv(gym.Env):
             'current_rotation': spaces.Box(low=0, high=3, shape=(), dtype=np.int8),
             'current_x': spaces.Box(low=0, high=9, shape=(), dtype=np.int8),
             'current_y': spaces.Box(low=-4, high=19, shape=(), dtype=np.int8),
+            'can_hold': spaces.Box(low=0, high=1, shape=(), dtype=np.int8)
         })
         
         # Initialize game components
@@ -117,7 +120,8 @@ class TetrisEnv(gym.Env):
             'current_shape': curr_shape,
             'current_rotation': curr_rot,
             'current_x': curr_x,
-            'current_y': curr_y
+            'current_y': curr_y,
+            'can_hold': int(self.player.can_hold)
         }
     
     def _get_reward(self, lines_cleared, game_over, new_positions=None):
@@ -213,22 +217,68 @@ class TetrisEnv(gym.Env):
     def step(self, action):
         """Execute one time step: place current piece at (rotation, x) then drop and lock"""
         self.episode_steps += 1
-        # decode placement action (supports int or sequence)
+        # decode action
         if isinstance(action, (list, tuple, np.ndarray)):
+            # Provided as (rot, col)
             rot, x = int(action[0]), int(action[1])
+            idx = rot * 10 + x
         else:
             idx = int(action)
+            if idx == 40:
+                # HOLD ACTION -------------------------------------------
+                self.player.action_handler.hold_piece()
+                # small time penalty to discourage excessive holding
+                reward = -0.01
+                obs = self._get_observation()
+                game_over = check_lost(self.player.locked_positions)
+                terminated = game_over
+                truncated = (self.episode_steps >= self.max_steps)
+                info = {
+                    'lines_cleared': 0,
+                    'score': self.player.score,
+                    'level': self.game.level,
+                    'episode_steps': self.episode_steps,
+                    'piece_placed': False,
+                    'piece_held': True
+                }
+                return obs, reward, terminated, truncated, info
             rot, x = divmod(idx, 10)
-        # set piece orientation and column
+        # Place column first
         piece = self.player.current_piece
-        piece.rotation = rot
         piece.x = x
+
+        grid = create_grid(self.player.locked_positions)
+
+        # Rotate toward desired orientation with at most 3 attempts
+        if rot != piece.rotation:
+            # Decide direction and number of quarter-turns (1-3)
+            cw_steps = (rot - piece.rotation) % 4
+            ccw_steps = (piece.rotation - rot) % 4
+            if cw_steps <= ccw_steps:
+                direction, steps = 1, cw_steps
+            else:
+                direction, steps = -1, ccw_steps
+
+            for _ in range(steps):
+                piece.rotate(direction, grid)  # uses SRS wall kicks
+                grid = create_grid(self.player.locked_positions)  # refresh grid after each attempt
+
+        # Simple boundary kick: if rotated piece hangs off left/right, shift into bounds
+        positions = convert_shape_format(piece)
+        xs = [p[0] for p in positions]
+        shift = 0
+        if min(xs) < 0:
+            shift = -min(xs)
+        elif max(xs) > 9:
+            shift = 9 - max(xs)
+        piece.x += shift
+
         # drop until collision (but first ensure spawn placement is valid)
         grid = create_grid(self.player.locked_positions)
-        # invalid placement: end episode with penalty
+        # invalid placement: apply penalty but don't terminate
         if not valid_space(piece, grid):
             obs = self._get_observation()
-            return obs, -10.0, True, False, {'invalid_move': True}
+            return obs, -10.0, False, False, {'invalid_move': True}
         while valid_space(piece, grid):
             piece.y += 1
         piece.y -= 1

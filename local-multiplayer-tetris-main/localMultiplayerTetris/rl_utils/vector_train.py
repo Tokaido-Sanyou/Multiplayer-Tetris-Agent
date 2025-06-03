@@ -57,8 +57,9 @@ def preprocess_obs_batch(batched_obs_dict, device):
             batched_obs_dict['current_shape'][i],
             batched_obs_dict['current_rotation'][i],
             batched_obs_dict['current_x'][i],
-            batched_obs_dict['current_y'][i]
-        ]).astype(np.float32) # Shape (6,)
+            batched_obs_dict['current_y'][i],
+            batched_obs_dict['can_hold'][i]
+        ]).astype(np.float32) # Shape (7,)
         
         combined = np.concatenate([grid_flat, metadata]).astype(np.float32)
         processed_tensors.append(torch.from_numpy(combined))
@@ -157,10 +158,10 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
     # Assuming observation_space and action_space are consistent across envs
     # Use the first env to get space dimensions if needed, though TetrisEnv has fixed dims
     # For ActorCriticAgent, state_dim is the flattened obs, action_dim is discrete
-    # state_dim = 200 (grid) + 6 (metadata) = 206
-    state_dim = 206 
-    # 4 rotations × 10 columns = 40 flattened placement actions
-    action_dim = 4 * 10
+    # state_dim = 200 (grid) + 7 (metadata) = 207
+    state_dim = 207 
+    # 4 rotations × 10 columns = 40 flattened placement actions + 1 hold action
+    action_dim = 4 * 10 + 1
 
     agent = ActorCriticAgent(
         state_dim,
@@ -223,9 +224,12 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
         actions = agent.select_actions_batch(current_states_batch_tensor) # Expects batched tensor
 
         # decode flattened actions into (rotation, column) pairs for MultiDiscrete
-        rot = actions // 10
-        col = actions % 10
+        hold_mask = actions == 40
+        rot = (actions % 40) // 10
+        col = (actions % 40) % 10
         multi_actions = np.stack([rot, col], axis=1)
+        # For hold actions we will send 40 directly (scalar) so env interprets hold
+        multi_actions[hold_mask] = 40
 
         # Step in all environments
         # `next_obs_list` is a list of obs dicts

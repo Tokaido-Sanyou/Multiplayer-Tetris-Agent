@@ -13,15 +13,22 @@ import os
 import argparse
 from torch.utils.tensorboard import SummaryWriter
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('training.log'),
-        logging.StreamHandler()
-    ]
-)
+# Helper to configure root logger with console output each run
+def _configure_logging(verbose: bool=False):
+    """Configure root logger; force reconfiguration each run."""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('training.log', mode='w'),
+            logging.StreamHandler()
+        ],
+        force=True  # Python>=3.8: override previous config
+    )
+
+# Call early so rest of module uses it
+_configure_logging(verbose='--verbose' in sys.argv)
 
 def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False):
     """
@@ -43,8 +50,8 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
         env = TetrisEnv(single_player=True, headless=not visualize)
         
         # Create agent
-        state_dim = 206  # 20x10 grid + next_piece + hold_piece + current_shape + current_rotation + current_x + current_y
-        action_dim = 8   # 8 possible actions, including no-op (ID 7)
+        state_dim = 207  # 20x10 grid + next_piece + hold_piece + current_shape + current_rotation + current_x + current_y + can_hold
+        action_dim = 41   # 40 placements + 1 hold
         agent = ActorCriticAgent(
             state_dim,
             action_dim,
@@ -111,16 +118,17 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                         episode_max_level = max(episode_max_level, info.get('level', 0))
                         episode_pieces_placed += int(info.get('piece_placed', False))
                         
+                        # DEBUG: Replay buffer & batch training disabled for debugging
                         # Store transition in replay buffer (use raw observation dictionaries)
-                        agent.memory.push(obs, action, reward, next_obs, done, info)
+                        # agent.memory.push(obs, action, reward, next_obs, done, info)
                         
                         # Train agent
-                        losses = agent.train()
-                        if losses is not None:
-                            actor_loss, critic_loss = losses
-                            episode_actor_loss += actor_loss
-                            episode_critic_loss += critic_loss
-                            train_steps += 1
+                        # losses = agent.train()
+                        # if losses is not None:
+                        #     actor_loss, critic_loss = losses
+                        #     episode_actor_loss += actor_loss
+                        #     episode_critic_loss += critic_loss
+                        #     train_steps += 1
                         
                         # Update state and observation
                         state = next_state
@@ -136,8 +144,18 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                         logging.error(f"Error during episode {episode + 1} step: {str(e)}")
                         break
                 
-                # Update exploration rate
-                agent.update_epsilon()
+                # Debug end-of-episode reason
+                if info.get('invalid_move', False):
+                    reason = 'invalid placement'
+                elif terminated:
+                    reason = 'game over (blocks above grid)'
+                elif truncated:
+                    reason = 'max steps reached'
+                else:
+                    reason = 'unknown'
+                print(f"Episode {episode+1} ended: {reason}", flush=True)
+                # Update exploration / gamma schedules
+                agent.update_schedules(episode+1)
                 
                 # Calculate average losses
                 if train_steps > 0:

@@ -20,9 +20,9 @@ class SharedFeatureExtractor(nn.Module):
             nn.ReLU()
         )
 
-        # MLP for piece metadata: next, hold, current_shape, rotation, x, y
+        # MLP for piece metadata: next, hold, current_shape, rotation, x, y, can_hold
         self.piece_embed = nn.Sequential(
-            nn.Linear(6, 32),  # 6 metadata scalars
+            nn.Linear(7, 32),  # 7 metadata scalars
             nn.ReLU(),
             nn.Linear(32, 32),
             nn.ReLU()
@@ -32,13 +32,13 @@ class SharedFeatureExtractor(nn.Module):
         """
         Forward pass through the feature extractor
         Args:
-            x: Input tensor of shape (batch_size, 202)
+            x: Input tensor of shape (batch_size, 207)
         Returns:
             Extracted features
         """
         batch_size = x.size(0)
         grid = x[:, :200].view(batch_size, 1, 20, 10)  # Grid: 20x10
-        pieces = x[:, 200:]  # Scalars: next_piece + hold_piece
+        pieces = x[:, 200:]  # Scalars: next_piece, hold_piece, current_shape, rotation, x, y, can_hold
 
         # Process grid with CNN
         grid_features = self.grid_conv(grid)
@@ -55,18 +55,19 @@ class ActorCritic(nn.Module):
     Actor-Critic network for Tetris
 
     State Space:
-    - Grid, next_piece, hold_piece, current_shape, rotation, x, y
+    - Grid, next_piece, hold_piece, current_shape, rotation, x, y, can_hold
 
     Action Space:
-    - Flattened placement index = rotation*10 + column (rot∈[0-3], col∈[0-9])
-    - 4 rotations × 10 columns = 40 actions
+    - 0-39: Flattened placement index = rotation*10 + column (rot∈[0-3], col∈[0-9])
+    - 40 : hold current piece
+    - 41 total actions
     """
     def __init__(self, input_dim, output_dim):
         """
         Initialize Actor-Critic network
         Args:
-            input_dim: Dimension of input state (202)
-            output_dim: Number of possible actions (40)
+            input_dim: Dimension of input state (207)
+            output_dim: Number of possible actions (41)
         """
         super(ActorCritic, self).__init__()
         
@@ -104,7 +105,7 @@ class ActorCritic(nn.Module):
         """
         Forward pass through the network
         Args:
-            x: Input tensor of shape (batch_size, 202)
+            x: Input tensor of shape (batch_size, 207)
         Returns:
             Tuple of (action_probs, state_value)
         """
@@ -126,8 +127,8 @@ class ActorCriticAgent:
         """
         Initialize Actor-Critic agent
         Args:
-            state_dim: Dimension of state space (202)
-            action_dim: Number of possible actions (40)
+            state_dim: Dimension of state space (207)
+            action_dim: Number of possible actions (41)
             actor_lr: Learning rate for actor
             critic_lr: Learning rate for critic
             gamma_start: Starting discount factor (e.g., 0.9)
@@ -172,7 +173,7 @@ class ActorCriticAgent:
         self.batch_size = 64
         self.gradient_clip = 1.0
     
-    def select_action(self, state):  # returns integer in [0,39]
+    def select_action(self, state):  # returns integer in [0,40]
         """
         Select action using epsilon-greedy policy
         Args:
@@ -182,7 +183,7 @@ class ActorCriticAgent:
                 - next_piece: 4x4 matrix of next piece
                 - hold_piece: 4x4 matrix of hold piece
         Returns:
-            Integer (0-39) representing the selected action
+            Integer (0-40) representing the selected action
         """
         # Throttle actor to at least 50 ms per action
         start = time.perf_counter()
@@ -197,7 +198,17 @@ class ActorCriticAgent:
                 action_probs, _ = self.network(state_tensor)
                 top_k_ac, top_k_indices = torch.topk(action_probs, self.top_k)
                 top_k_indices = top_k_indices[0].cpu().numpy()
-                action = int(np.random.choice(top_k_indices))
+                chosen = int(np.random.choice(top_k_indices))
+                # Avoid invalid hold when cannot hold
+                can_hold_flag = bool(state[-1]) if isinstance(state, (list, np.ndarray)) else True
+                if (not can_hold_flag) and chosen == 40:
+                    # pick best non-hold action (probabilities sorted)
+                    sorted_idx = torch.argsort(action_probs[0], descending=True).cpu().numpy()
+                    for idx in sorted_idx:
+                        if idx != 40:
+                            chosen = int(idx)
+                            break
+                action = chosen
         # Ensure minimum 50 ms per call
         # elapsed = time.perf_counter() - start
         # if elapsed < 0.05:
