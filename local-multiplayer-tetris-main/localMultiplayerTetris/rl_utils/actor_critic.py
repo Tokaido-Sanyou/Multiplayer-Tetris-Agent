@@ -346,19 +346,26 @@ class ActorCriticAgent:
             next_state_values = self.network.critic(next_features)
             targets = rewards + self.gamma * next_state_values * (1 - dones)
         
-        # Update critic network on V(s)
+        # ---------------- Critic update ---------------- #
         self.critic_optimizer.zero_grad()
         state_values = self.network.critic(features)
         critic_loss = nn.MSELoss()(state_values, targets)
         critic_loss.backward(retain_graph=True)
         nn.utils.clip_grad_norm_(self.network.critic.parameters(), self.gradient_clip)
         self.critic_optimizer.step()
-        
-        # Update actor network on π(a|s)
+
+        # ---------------- Actor update ---------------- #
         self.actor_optimizer.zero_grad()
         action_probs = self.network.actor(features)
-        log_probs = torch.log(action_probs.gather(1, actions))
-        actor_loss = -(log_probs * targets.detach()).mean()
+        # Avoid log(0) by clamping
+        selected_action_probs = action_probs.gather(1, actions).clamp(min=1e-8)
+        log_probs = torch.log(selected_action_probs)
+        # Advantage = TD-target − V(s)
+        advantages = (targets - state_values).detach()
+        actor_loss = -(log_probs * advantages).mean()
+        # Optional entropy regularization to reduce premature convergence/divergence
+        entropy = -(action_probs * torch.log(action_probs.clamp(min=1e-8))).sum(dim=1).mean()
+        actor_loss -= 0.01 * entropy  # encourage exploration
         actor_loss.backward()
         nn.utils.clip_grad_norm_(self.network.actor.parameters(), self.gradient_clip)
         self.actor_optimizer.step()
