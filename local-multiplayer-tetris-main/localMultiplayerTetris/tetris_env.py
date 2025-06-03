@@ -95,38 +95,75 @@ class TetrisEnv(gym.Env):
     
     def _get_reward(self, lines_cleared, game_over):
         # 1. Line-clear + time penalty
-        bases = {1:40, 2:100, 3:300, 4:1200}
+        bases = {1:10, 2:20, 3:40, 4:80}
         reward = bases.get(lines_cleared, 0) * (self.game.level + 1)
-        reward += -0.1   # small time penalty
 
         # 2. Game-over check
         if game_over:
-            return reward - 200
+            return reward - 20
 
         # 3. Compute features
         grid = create_grid(self.player.locked_positions)
         col_heights = [  # from bottom (row 19) up
-        next((r for r in range(20) if grid[r][c]!=(0,0,0)), 20)
-        for c in range(10)
+            next((r for r in range(20) if grid[r][c]!=(0,0,0)), 20)
+            for c in range(10)
         ]
         curr = {
-        "holes": sum(
-            1 for c in range(10)
-            for r in range(col_heights[c]+1, 20)
-            if grid[r][c]==(0,0,0)
-        ),
-        "agg_h": sum(col_heights),
-        "bump": sum(abs(col_heights[i]-col_heights[i+1]) for i in range(9)),
+            "holes": sum(
+                1 for c in range(10)
+                for r in range(col_heights[c]+1, 20)
+                if grid[r][c]==(0,0,0)
+            ),
+            "agg_h": sum(col_heights),
+            "bump": sum(abs(col_heights[i]-col_heights[i+1]) for i in range(9)),
         }
 
         # 4. Delta-based shaping
         prev = self.prev_features if hasattr(self, 'prev_features') else None
         if prev:
-            reward += 4.0 * (prev["holes"]   - curr["holes"])
-            reward += 0.5 * (prev["agg_h"]   - curr["agg_h"])
-            reward += 1.0 * (prev["bump"]    - curr["bump"])
+            reward += 0.02 * (prev["holes"]   - curr["holes"])
+            reward += 0.4 * (prev["agg_h"]   - curr["agg_h"])
+            reward += 0.005 * (prev["bump"]    - curr["bump"])
 
-        # 5. Store for next step
+            # Height preservation bonus
+            if curr["agg_h"] <= prev["agg_h"]:
+                reward += 0.3  # Bonus for not increasing height
+
+        # 5. Adjacent pieces bonus
+        if hasattr(self, 'prev_grid'):
+            # Find newly placed blocks
+            new_blocks = set()
+            for i in range(20):
+                for j in range(10):
+                    if grid[i][j] != (0,0,0) and self.prev_grid[i][j] == (0,0,0):
+                        new_blocks.add((j,i))  # (x,y) coordinates
+            
+            # Count adjacent pieces for new blocks
+            if new_blocks:
+                adjacent_count = 0
+                for x, y in new_blocks:
+                    # Check all adjacent positions
+                    for dx, dy in [(0,1), (0,-1), (1,0), (-1,0)]:
+                        nx, ny = x + dx, y + dy
+                        if (0 <= nx < 10 and 0 <= ny < 20 and 
+                            grid[ny][nx] != (0,0,0) and 
+                            (nx,ny) not in new_blocks):
+                            adjacent_count += 1
+                
+                # Reward based on number of adjacent pieces
+                reward += 0.1 * adjacent_count
+
+                # Position bonus for placing pieces above previous max height
+                if prev:
+                    prev_max_height = 20 - min(prev["agg_h"] / 10, 20)  # Convert to actual height
+                    new_max_height = min(y for _, y in new_blocks)
+                    if new_max_height < prev_max_height:  # Remember: lower y means higher up
+                        reward += 0.2  # Bonus for building upward
+
+        # Store current grid for next step
+        self.prev_grid = [row[:] for row in grid]  # Deep copy of grid
+
+        # 6. Store features for next step
         self.prev_features = curr
 
         return reward
@@ -301,6 +338,8 @@ class TetrisEnv(gym.Env):
         self.episode_steps = 0
         self.accum_reward = 0  # initialize accumulated reward component
         self.prev_features = None  # clear feature-history for shaping
+        # Initialize previous grid state
+        self.prev_grid = create_grid({})  # Empty grid
         # Reset spawn collision flag
         self._spawn_checked = False
         
