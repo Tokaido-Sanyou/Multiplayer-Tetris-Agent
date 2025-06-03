@@ -167,6 +167,33 @@ Loss: MSE(predicted_features, target_features)
 
 ## 🔄 Training Algorithms
 
+### 🌟 NEW: Staged Unified Training Algorithm
+**Purpose**: To address the "moving target" problem where the actor tries to learn from a state model that is also rapidly changing. This staged approach first stabilizes the state model, then trains the actor on these stable goals, and finally fine-tunes both.
+
+**3-Stage Schedule** (configurable, e.g., 300 batches total):
+1.  **Stage 1: State Model Pretraining** (e.g., Batches 0-149)
+    *   **Focus**: Intensively train the `StateModel`.
+    *   `ActorCritic` training is **disabled**.
+    *   **Goal**: Learn optimal placements, line clearing strategies, and produce stable, high-quality goal vectors.
+    *   *Intensity*: State model may undergo multiple training epochs per batch.
+    *   *Evaluation*: At the end of this stage, the quality of the state model's goals (consistency, optimality, diversity) is evaluated.
+
+2.  **Stage 2: Actor Training with Frozen Goals** (e.g., Batches 150-249)
+    *   **Focus**: Intensively train the `ActorCritic` agent.
+    *   `StateModel` parameters are **frozen**.
+    *   **Goal**: Actor learns to achieve the stable, high-quality goals provided by the pretrained state model. Gradients from the actor **do not** flow back to the state model (`goal_vector.detach()` is used).
+    *   *Intensity*: Actor (PPO) may undergo multiple training epochs per batch.
+
+3.  **Stage 3: Joint Fine-tuning** (e.g., Batches 250-299)
+    *   **Focus**: Fine-tune both the `StateModel` and `ActorCritic` agent.
+    *   Both models are trained, and gradients are allowed to flow through the goals.
+    *   **Goal**: Achieve optimal alignment and performance by allowing both models to adapt to each other.
+
+**Benefits**:
+-   **Stable Learning**: Reduces oscillations and instability caused by the actor chasing a moving target (the state model).
+-   **Improved Goal Quality**: Ensures the state model produces meaningful and reliable goals before the actor starts learning from them.
+-   **Better Actor Performance**: The actor can learn more effectively when guided by consistent and sensible goals.
+
 ### 🌙 8-Phase Dream-Enhanced Training Algorithm
 
 **Revolutionary training system with explicit goal achievement through synthetic dreams:**
@@ -636,3 +663,43 @@ MIT License - see LICENSE file for details.
 ---
 
 **🎮 Ready to train your own Tetris AI? Start with the unified trainer and watch your agent learn to master the game through hierarchical reinforcement learning!** 
+
+## 🚀 How to Run
+
+### 1. Standard Unified Training
+```bash
+python -m localMultiplayerTetris.rl_utils.unified_trainer --num_batches 50 --exploration_mode rnd --visualize
+```
+-   `--num_batches`: Total number of training batches (e.g., 50 batches * 20 exploration + 20 exploitation episodes = 2000 total episodes by default).
+-   `--exploration_mode`: `rnd` (default), `random`, or `deterministic`.
+-   `--visualize`: Add this flag to see the Tetris game rendered for the last exploitation episode of each batch.
+-   `--log_dir`: Specify log directory (default: `logs/unified_training`).
+-   `--checkpoint_dir`: Specify checkpoint directory (default: `checkpoints/unified`).
+
+### 2. 🌟 NEW: Staged Unified Training (Recommended for Improved Stability)
+```bash
+python -m localMultiplayerTetris.rl_utils.staged_unified_trainer --num_batches 300 --exploration_mode rnd
+```
+-   `--num_batches`: Total number of training batches across all stages (e.g., 300). The script internally divides these into pretraining, actor training, and joint fine-tuning.
+-   `--exploration_mode`: `rnd` (default), `random`, or `deterministic`.
+-   `--visualize`: Add this flag to see rendering.
+-   `--log_dir`: Specify log directory (default: `logs/staged_unified_training`).
+-   `--checkpoint_dir`: Specify checkpoint directory (default: `checkpoints/staged_unified`).
+
+### 3. Dream-Enhanced Training
+```bash
+python -m localMultiplayerTetris.rl_utils.unified_trainer_dream --num_batches 100 --exploration_mode rnd --visualize
+```
+-   Uses the `unified_trainer_dream.py` script. Parameters are similar to standard training.
+
+### 💡 Configuration
+// ... existing code ...
+### 📈 Monitoring Training
+-   **TensorBoard**: Comprehensive logs are saved in the specified `log_dir`.
+    ```bash
+    tensorboard --logdir logs/staged_unified_training
+    # or logs/unified_training, logs/dream_enhanced_training
+    ```
+-   **Console Output**: Detailed batch summaries and phase-specific results are printed.
+-   **Log Files**: `unified_training.log`, `staged_unified_training.log`, or `dream_training.log` capture all console output.
+// ... existing code ... 

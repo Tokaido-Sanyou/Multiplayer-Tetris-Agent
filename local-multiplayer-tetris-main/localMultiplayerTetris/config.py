@@ -95,14 +95,14 @@ class TetrisConfig:
         """
         
         # Environment reward parameters (tetris_env.py)
-        LINE_CLEAR_BASE = {1: 100, 2: 200, 3: 400, 4: 1600}  # Base scores for line clears
+        LINE_CLEAR_BASE = {1: 100, 2: 300, 3: 500, 4: 800}  # Standard Tetris scoring
         LEVEL_MULTIPLIER = True  # Multiply by (level + 1)
         GAME_OVER_PENALTY = -200  # Heavy penalty for losing
         TIME_PENALTY = -0.01  # Small penalty per step (disabled)
         
         # Feature-based reward shaping weights (UPDATED)
         HOLE_WEIGHT = 0.5      # Penalty per hole created/filled (reduced from 4.0)
-        MAX_HEIGHT_WEIGHT = 5.0   # Penalty for maximum column height changes (reduced from 10.0)
+        MAX_HEIGHT_WEIGHT = 2.0   # Penalty for maximum column height changes (reduced from 10.0)
         BUMPINESS_WEIGHT = 0.2    # Penalty for surface irregularity changes (reduced from 1.0)
         
         # NEW: Piece presence reward system
@@ -124,6 +124,9 @@ class TetrisConfig:
         # Future reward predictor parameters (future_reward_predictor.py)
         DISCOUNT_FACTOR = 0.99    # Gamma for trajectory value calculation
         HORIZON_STEPS = 10        # Number of future steps to consider
+        
+        # NEW: Normalization for FutureRewardPredictor targets
+        FUTURE_REWARD_TARGET_SCALE = 100.0 # Divide target terminal rewards by this during FRP training
         
     # ===========================================
     # NEURAL NETWORK ARCHITECTURE (CENTRALIZED)
@@ -223,7 +226,7 @@ class TetrisConfig:
         DEVICE = 'auto'  # 'auto', 'cuda', 'mps', or 'cpu'
         
         # Overall training schedule - Extended for better convergence
-        NUM_BATCHES = 100         # Increased from 50 - each batch is short so we need more
+        NUM_BATCHES = 300         # Increased from 50 - each batch is short so we need more
         BATCH_SIZE = 32            # Experience batch size
         
         # Phase 1: Exploration
@@ -231,8 +234,13 @@ class TetrisConfig:
         
         # Phase 2: State Model Training  
         STATE_TRAINING_SAMPLES = 1500  # Increased from 1000 for better convergence
-        STATE_EPOCHS = 3               # Reduced from 5 for stability
+        STATE_EPOCHS = 3               # Reduced from 5 for stability (Original fixed epochs per call)
         STATE_LEARNING_RATE = 1e-3     # Reduced from 1e-2 for better convergence
+        
+        # NEW: Adaptive State Model Training Parameters
+        MIN_STATE_MODEL_EPOCHS_PER_CALL = 3   # Min epochs for phase_2_state_learning
+        MAX_STATE_MODEL_EPOCHS_PER_CALL = 10  # Max epochs for phase_2_state_learning to prevent freezing
+        STATE_MODEL_LOSS_IMPROVEMENT_THRESHOLD = 0.95 # Target: current_loss < prev_batch_loss * threshold
         
         # Phase 3: Future Reward Prediction
         REWARD_BATCH_SIZE = 64      # Batch size for reward predictor

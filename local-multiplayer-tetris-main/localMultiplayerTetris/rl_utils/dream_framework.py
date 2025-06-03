@@ -330,6 +330,7 @@ class DreamTrajectoryGenerator:
     def _calculate_dream_goal_achievement(self, state, action, next_state, goal_vector):
         """
         Calculate how well a dream action achieved the goal
+        ENHANCED: Now includes LINE CLEARING REWARDS for dream-reality alignment
         
         Args:
             state: Current state
@@ -337,7 +338,7 @@ class DreamTrajectoryGenerator:
             next_state: Achieved next state
             goal_vector: Target goal
         Returns:
-            dream_reward: Reward for goal achievement in dream
+            dream_reward: Reward for goal achievement in dream INCLUDING line clearing
         """
         try:
             # Extract goal components
@@ -356,22 +357,155 @@ class DreamTrajectoryGenerator:
             x_pos_match = 1.0 - abs(achieved_x_pos - goal_x_pos) / 10.0
             y_pos_match = 1.0 - abs(achieved_y_pos - goal_y_pos) / 20.0
             
-            # Dream reward heavily favors goal achievement
-            dream_reward = (
-                rotation_match * 15.0 +      # Rotation alignment
-                x_pos_match * 15.0 +         # X position alignment
-                y_pos_match * 10.0 +         # Y position alignment
-                goal_confidence * 5.0        # Confidence bonus
+            # CRITICAL ADDITION: Calculate line clearing value for this dream achievement
+            line_clear_value = self._calculate_dream_line_clearing_value(
+                state, next_state, achieved_rotation, achieved_x_pos, achieved_y_pos
             )
             
-            # Dream quality bonus (dreams should be better than reality)
-            dream_bonus = 5.0  # Extra reward for dreaming
+            # ENHANCED: Dream reward combines goal matching WITH line clearing objective
+            goal_matching_reward = (
+                rotation_match * 10.0 +      # Rotation alignment (reduced weight)
+                x_pos_match * 10.0 +         # X position alignment (reduced weight)
+                y_pos_match * 8.0 +          # Y position alignment (reduced weight)
+                goal_confidence * 3.0        # Confidence bonus (reduced weight)
+            )
             
-            return dream_reward + dream_bonus
+            # Dream reward heavily favors LINE CLEARING achievement
+            dream_reward = (
+                line_clear_value * 4.0 +     # 🔥 LINE CLEARING VALUE (4x weight - MOST IMPORTANT!)
+                goal_matching_reward +       # Goal matching for consistency
+                5.0                          # Dream quality bonus
+            )
+            
+            return dream_reward
             
         except Exception as e:
             print(f"Error in dream reward calculation: {e}")
             return 1.0  # Fallback
+    
+    def _calculate_dream_line_clearing_value(self, before_state, after_state, rotation, x_pos, y_pos):
+        """
+        CRITICAL NEW METHOD: Calculate line clearing value for dream achievements
+        This aligns dream rewards with actual Tetris objectives!
+        
+        Args:
+            before_state: State before dream action
+            after_state: State after dream action  
+            rotation, x_pos, y_pos: Achieved placement parameters
+        Returns:
+            line_clear_value: Value based on line clearing potential and rewards
+        """
+        try:
+            # Extract board states
+            before_board = (1 - before_state[200:400].reshape(20, 10))  # Occupied cells
+            after_board = (1 - after_state[200:400].reshape(20, 10))    # Occupied cells after placement
+            
+            # Calculate lines that would be cleared by comparing before/after
+            lines_cleared = 0
+            cleared_lines = []
+            
+            for row in range(20):
+                before_filled = np.sum(before_board[row, :])
+                after_filled = np.sum(after_board[row, :])
+                
+                # If after has 10 filled cells, it's a potential line clear
+                if after_filled >= 9.5:  # Relaxed for dream states
+                    lines_cleared += 1
+                    cleared_lines.append(row)
+            
+            # Calculate line clearing rewards (same as real exploration)
+            line_clear_reward = 0
+            if lines_cleared > 0:
+                # Use actual Tetris scoring
+                line_clear_base = {1: 100, 2: 200, 3: 400, 4: 1600}
+                line_clear_reward = line_clear_base.get(lines_cleared, lines_cleared * 400)
+                
+                # Add bonus for clearing multiple lines simultaneously
+                if lines_cleared >= 2:
+                    line_clear_reward *= 1.5
+                
+                # Dream-specific bonus for achieving line clears
+                line_clear_reward *= 1.2  # 20% dream bonus
+            
+            # Calculate line clearing POTENTIAL (near-complete lines after placement)
+            line_potential = 0
+            for row in range(20):
+                filled_cells = np.sum(after_board[row, :])
+                if filled_cells >= 8:  # Close to being complete
+                    potential_value = (filled_cells - 7) * 15  # Higher weight in dreams
+                    line_potential += potential_value
+            
+            # Calculate strategic improvement (better board state)
+            strategic_improvement = self._calculate_dream_strategic_improvement(
+                before_board, after_board, cleared_lines
+            )
+            
+            # Total line clearing value for dreams
+            total_dream_line_value = line_clear_reward + line_potential + strategic_improvement
+            
+            return total_dream_line_value
+            
+        except Exception as e:
+            print(f"Error calculating dream line clearing value: {e}")
+            return 0.0  # Fallback
+    
+    def _calculate_dream_strategic_improvement(self, before_board, after_board, cleared_lines):
+        """
+        Calculate strategic improvement in board state for dreams
+        """
+        try:
+            # Calculate height reduction (good for dreams)
+            before_height = self._calculate_board_height(before_board)
+            after_height = self._calculate_board_height(after_board)
+            height_improvement = max(0, before_height - after_height) * 10
+            
+            # Calculate hole reduction (good for dreams)
+            before_holes = self._count_board_holes(before_board)
+            after_holes = self._count_board_holes(after_board)
+            hole_improvement = max(0, before_holes - after_holes) * 20
+            
+            # Surface smoothness improvement
+            before_bumpiness = self._calculate_board_bumpiness(before_board)
+            after_bumpiness = self._calculate_board_bumpiness(after_board)
+            smoothness_improvement = max(0, before_bumpiness - after_bumpiness) * 5
+            
+            return height_improvement + hole_improvement + smoothness_improvement
+            
+        except Exception as e:
+            return 0.0
+    
+    def _calculate_board_height(self, board):
+        """Calculate maximum height of the board"""
+        for row in range(20):
+            if np.sum(board[row, :]) > 0:
+                return 20 - row
+        return 0
+    
+    def _count_board_holes(self, board):
+        """Count holes in the board (empty cells with filled cells above)"""
+        holes = 0
+        for col in range(10):
+            filled_found = False
+            for row in range(20):
+                if board[row, col] > 0:
+                    filled_found = True
+                elif filled_found and board[row, col] == 0:
+                    holes += 1
+        return holes
+    
+    def _calculate_board_bumpiness(self, board):
+        """Calculate bumpiness (height differences between adjacent columns)"""
+        column_heights = []
+        for col in range(10):
+            height = 0
+            for row in range(20):
+                if board[row, col] > 0:
+                    height = 20 - row
+                    break
+            column_heights.append(height)
+        
+        bumpiness = sum(abs(column_heights[i] - column_heights[i+1]) for i in range(9))
+        return bumpiness
     
     def get_average_dream_quality(self):
         """Get recent average dream quality"""

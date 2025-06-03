@@ -132,6 +132,11 @@ class FutureRewardPredictor(nn.Module):
         
         device = next(self.parameters()).device
         
+        # Get reward normalization scale from config
+        reward_scale = getattr(self.config.RewardConfig, 'FUTURE_REWARD_TARGET_SCALE', 100.0)
+        if reward_scale <= 0: # Fallback if scale is invalid
+            reward_scale = 100.0
+
         total_losses = []
         reward_losses = []
         value_losses = []
@@ -155,12 +160,16 @@ class FutureRewardPredictor(nn.Module):
                 reward_pred, value_pred = self.forward(state, action)
                 
                 # Calculate losses
-                target_reward = torch.FloatTensor([[terminal_reward]]).to(device)
+                # NORMALIZE THE TARGET REWARD
+                normalized_target_reward = terminal_reward / reward_scale
+                target_reward_tensor = torch.FloatTensor([[normalized_target_reward]]).to(device)
+                
                 # For terminal placements, future value should be 0
                 target_value = torch.zeros(1, 1, device=device)
                 
-                reward_loss = criterion(reward_pred, target_reward)
-                value_loss = criterion(value_pred, target_value)
+                # reward_pred should also predict on the normalized scale
+                reward_loss = criterion(reward_pred, target_reward_tensor)
+                value_loss = criterion(value_pred, target_value) # value_pred should naturally be small (near 0)
                 total_loss = reward_loss + value_loss
                 
                 # Backpropagation
@@ -170,7 +179,9 @@ class FutureRewardPredictor(nn.Module):
                 
                 # Accumulate losses
                 epoch_total_loss += total_loss.item()
-                epoch_reward_loss += reward_loss.item()
+                # Store UNNORMALIZED reward loss for consistent reporting if needed,
+                # but the actual training uses normalized. For now, report based on normalized.
+                epoch_reward_loss += reward_loss.item() 
                 epoch_value_loss += value_loss.item()
             
             # Average losses for this epoch

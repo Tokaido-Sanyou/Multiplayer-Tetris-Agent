@@ -398,62 +398,147 @@ class UnifiedTrainer:
             
             self.update_batch_stats('exploration', exploration_stats)
     
-    def phase_2_state_learning(self, batch):
+    def phase_2_state_learning(self, batch, previous_batch_min_loss=float('inf'), extra_training=False):
         """
-        Phase 2: Train state model to learn optimal placements from terminal rewards
+        Phase 2: State Model Learning
+        Trains the state model on data from exploration_data.
+        NEW: Adaptive epoch training based on previous batch's best loss.
         """
-        print(f"\n🎯 Phase 2: State Model Training (Batch {batch+1})")
-        
+        print(f"🧠 Phase 2: State Model Learning (Batch {batch+1})")
         if not self.exploration_data:
-            print("⚠️  No exploration data available for state learning")
-            return
-            
-        # Train state model from exploration data
-        loss_info = self.state_model.train_from_placements(
-            self.exploration_data[-self.config.state_training_samples:],
-            self.state_optimizer,
-            num_epochs=self.config.state_epochs
-        )
+            print("   ⚠️ No exploration data for state model training.")
+            self.update_batch_stats('state_model', {'total_loss': 0, 'loss_improvement': 0, 'epochs_trained': 0})
+            return {'total_loss': 0, 'rotation_loss': 0, 'x_pos_loss': 0, 'y_pos_loss': 0, 'value_loss': 0, 'current_min_loss': float('inf'), 'epochs_trained_this_call': 0}
+
+        # Retrieve adaptive training parameters from config
+        min_epochs_per_call = self.tetris_config.TrainingConfig.MIN_STATE_MODEL_EPOCHS_PER_CALL
+        max_epochs_per_call = self.tetris_config.TrainingConfig.MAX_STATE_MODEL_EPOCHS_PER_CALL
+        loss_improvement_threshold_factor = self.tetris_config.TrainingConfig.STATE_MODEL_LOSS_IMPROVEMENT_THRESHOLD
         
-        if loss_info:
-            # Log detailed state model losses
-            self.writer.add_scalar('StateModel/TotalLoss', loss_info['total_loss'], batch)
-            self.writer.add_scalar('StateModel/RotationLoss', loss_info['rotation_loss'], batch)
-            self.writer.add_scalar('StateModel/XPositionLoss', loss_info['x_position_loss'], batch)
-            self.writer.add_scalar('StateModel/YPositionLoss', loss_info['y_position_loss'], batch)
-            self.writer.add_scalar('StateModel/ValueLoss', loss_info['value_loss'], batch)
+        # For 'extra_training' calls, we might want to ensure they also run adequately
+        # For now, the primary epoch control is min/max_epochs_per_call and the loss condition.
+        # The original self.tetris_config.TrainingConfig.STATE_EPOCHS is superseded by this new logic.
+
+        # Prepare data for state model training
+        states = torch.FloatTensor(np.array([d['state_vector'] for d in self.exploration_data])).to(self.device)
+        true_rotations = torch.LongTensor(np.array([d['true_rotation'] for d in self.exploration_data])).to(self.device)
+        true_x_positions = torch.LongTensor(np.array([d['true_x'] for d in self.exploration_data])).to(self.device)
+        true_y_positions = torch.LongTensor(np.array([d['true_y'] for d in self.exploration_data])).to(self.device)
+        terminal_rewards = torch.FloatTensor(np.array([d['terminal_reward'] for d in self.exploration_data])).unsqueeze(1).to(self.device)
+
+        # Calculate reward weights
+        reward_weights = torch.clamp(terminal_rewards / self.tetris_config.AlgorithmConfig.REWARD_WEIGHT_NORMALIZATION, min=0.1, max=1.0).squeeze()
+        
+        dataset = torch.utils.data.TensorDataset(states, true_rotations, true_x_positions, true_y_positions, terminal_rewards, reward_weights)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=self.tetris_config.TrainingConfig.BATCH_SIZE, shuffle=True)
+
+        initial_loss = float('inf')
+        final_loss = float('inf')
+        min_loss_this_call = float('inf')
+        epochs_trained_this_call = 0
+        
+        all_epoch_total_losses = []
+        all_epoch_rot_losses = []
+        all_epoch_x_losses = []
+        all_epoch_y_losses = []
+        all_epoch_val_losses = []
+
+        print(f"   Adaptive training: MinEpochs={min_epochs_per_call}, MaxEpochs={max_epochs_per_call}, TargetLossFactor={loss_improvement_threshold_factor}, PrevBatchMinLoss={previous_batch_min_loss if previous_batch_min_loss != float('inf') else 'N/A'}")
+
+        for epoch in range(max_epochs_per_call):
+            epochs_trained_this_call = epoch + 1
+            epoch_total_loss = 0
+            epoch_rotation_loss = 0
+            epoch_x_pos_loss = 0
+            epoch_y_pos_loss = 0
+            epoch_value_loss = 0
             
-            # Log training progression (average over all epochs)
-            all_total = loss_info['all_total_losses']
-            all_rot = loss_info['all_rotation_losses']
-            all_x = loss_info['all_x_position_losses']
-            all_y = loss_info['all_y_position_losses']
-            all_val = loss_info['all_value_losses']
+            for s, rot, x, y, rew, weights in dataloader:
+                self.state_optimizer.zero_grad()
+                pred_rot, pred_x, pred_y, pred_value = self.state_model(s)
+                
+                loss_rot = F.cross_entropy(pred_rot, rot, reduction='none')
+                loss_x = F.cross_entropy(pred_x, x, reduction='none')
+                loss_y = F.cross_entropy(pred_y, y, reduction='none')
+                loss_value = F.mse_loss(pred_value, rew, reduction='none').squeeze()
+                
+                weighted_loss = (torch.mean(loss_rot * weights) +
+                                 torch.mean(loss_x * weights) +
+                                 torch.mean(loss_y * weights) +
+                                 torch.mean(loss_value * weights))
+                
+                weighted_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.state_model.parameters(), self.tetris_config.TrainingConfig.GRADIENT_CLIP_NORM)
+                self.state_optimizer.step()
+                
+                epoch_total_loss += weighted_loss.item()
+                epoch_rotation_loss += torch.mean(loss_rot * weights).item()
+                epoch_x_pos_loss += torch.mean(loss_x * weights).item()
+                epoch_y_pos_loss += torch.mean(loss_y * weights).item()
+                epoch_value_loss += torch.mean(loss_value * weights).item()
+
+            avg_epoch_total_loss = epoch_total_loss / len(dataloader)
+            avg_epoch_rotation_loss = epoch_rotation_loss / len(dataloader)
+            avg_epoch_x_pos_loss = epoch_x_pos_loss / len(dataloader)
+            avg_epoch_y_pos_loss = epoch_y_pos_loss / len(dataloader)
+            avg_epoch_value_loss = epoch_value_loss / len(dataloader)
+
+            all_epoch_total_losses.append(avg_epoch_total_loss)
+            all_epoch_rot_losses.append(avg_epoch_rotation_loss)
+            all_epoch_x_losses.append(avg_epoch_x_pos_loss)
+            all_epoch_y_losses.append(avg_epoch_y_pos_loss)
+            all_epoch_val_losses.append(avg_epoch_value_loss)
             
-            # IMMEDIATE STATISTICS REPORTING
-            improvement = 0.0
-            if len(all_total) > 1:
-                total_improvement = (all_total[0] - all_total[-1]) / all_total[0] if all_total[0] > 0 else 0
-                improvement = total_improvement
-                self.writer.add_scalar('StateModel/TotalLossImprovement', total_improvement, batch)
-                self.writer.add_scalar('StateModel/FinalEpochLoss', all_total[-1], batch)
-            
-            print(f"📊 Phase 2 Results:")
-            print(f"   • Total loss: {loss_info['total_loss']:.4f} (improvement: {improvement*100:.1f}%)")
-            print(f"   • Rotation loss: {loss_info['rotation_loss']:.4f}")
-            print(f"   • X position loss: {loss_info['x_position_loss']:.4f}")
-            print(f"   • Y position loss: {loss_info['y_position_loss']:.4f}")
-            print(f"   • Value loss: {loss_info['value_loss']:.4f}")
-            
-            # Store batch statistics
-            self.update_batch_stats('state_model', {
-                'total_loss': loss_info['total_loss'],
-                'rotation_loss': loss_info['rotation_loss'],
-                'x_position_loss': loss_info['x_position_loss'],
-                'y_position_loss': loss_info['y_position_loss'],
-                'value_loss': loss_info['value_loss'],
-                'loss_improvement': improvement
-            })
+            if epoch == 0:
+                initial_loss = avg_epoch_total_loss
+            final_loss = avg_epoch_total_loss
+            min_loss_this_call = min(min_loss_this_call, avg_epoch_total_loss)
+
+            print(f"     Epoch {epochs_trained_this_call}/{max_epochs_per_call} (State Model): Loss={avg_epoch_total_loss:.4f} (MinThisCall: {min_loss_this_call:.4f})")
+
+            if epochs_trained_this_call >= min_epochs_per_call:
+                if previous_batch_min_loss == float('inf'): # First batch, no prior loss to compare against
+                    if epochs_trained_this_call == min_epochs_per_call: # Run min_epochs and stop
+                         print(f"     Stopping: Reached min epochs ({min_epochs_per_call}) for the first batch (no previous loss to compare).")
+                         break 
+                elif min_loss_this_call < previous_batch_min_loss * loss_improvement_threshold_factor:
+                    print(f"     Stopping: Met loss condition ({min_loss_this_call:.4f} < {previous_batch_min_loss * loss_improvement_threshold_factor:.4f}).")
+                    break
+                elif epochs_trained_this_call == max_epochs_per_call:
+                    print(f"     Stopping: Reached max epochs ({max_epochs_per_call}) for this call.")
+                    # No break needed, loop will terminate
+            elif epochs_trained_this_call == max_epochs_per_call : # Hit max epochs before min_epochs (only if max_epochs_per_call < min_epochs_per_call, which is unlikely but good to cover)
+                 print(f"     Stopping: Reached max epochs ({max_epochs_per_call}) for this call (before min epochs completed due to config).")
+
+
+        loss_improvement = (initial_loss - final_loss) / initial_loss if initial_loss > 0 else 0
+        
+        stats = {
+            'total_loss': final_loss, 
+            'rotation_loss': all_epoch_rot_losses[-1] if all_epoch_rot_losses else 0,
+            'x_pos_loss': all_epoch_x_losses[-1] if all_epoch_x_losses else 0,
+            'y_pos_loss': all_epoch_y_losses[-1] if all_epoch_y_losses else 0,
+            'value_loss': all_epoch_val_losses[-1] if all_epoch_val_losses else 0,
+            'loss_improvement': loss_improvement,
+            'initial_loss': initial_loss,
+            'current_min_loss': min_loss_this_call, # Key for StagedUnifiedTrainer
+            'epochs_trained_this_call': epochs_trained_this_call,
+            'all_total_losses': all_epoch_total_losses, # For more detailed logging if needed
+        }
+        self.update_batch_stats('state_model', stats)
+        
+        # Log to TensorBoard (final epoch stats for this call)
+        self.writer.add_scalar('StateModel/TotalLoss_Call', final_loss, batch * 10 + epochs_trained_this_call) # Adjust global step for multiple calls
+        self.writer.add_scalar('StateModel/RotationLoss_Call', stats['rotation_loss'], batch * 10 + epochs_trained_this_call)
+        self.writer.add_scalar('StateModel/XPositionLoss_Call', stats['x_pos_loss'], batch * 10 + epochs_trained_this_call)
+        self.writer.add_scalar('StateModel/YPositionLoss_Call', stats['y_pos_loss'], batch * 10 + epochs_trained_this_call)
+        self.writer.add_scalar('StateModel/ValueLoss_Call', stats['value_loss'], batch * 10 + epochs_trained_this_call)
+        self.writer.add_scalar('StateModel/MinLossThisCall', min_loss_this_call, batch * 10 + epochs_trained_this_call)
+        self.writer.add_scalar('StateModel/EpochsTrainedThisCall', epochs_trained_this_call, batch)
+
+
+        print(f"   State Model training for this call complete. Epochs: {epochs_trained_this_call}, Min Loss This Call: {min_loss_this_call:.4f}")
+        return stats
     
     def phase_3_reward_prediction(self, batch):
         """
@@ -491,7 +576,7 @@ class UnifiedTrainer:
                 'value_loss': loss_info['value_loss']
             })
     
-    def phase_4_exploitation(self, batch):
+    def phase_4_exploitation(self, batch, freeze_goals=False):
         """
         Phase 4: Enhanced Multi-Attempt Goal-Focused Policy Exploitation
         ENHANCEMENT: Multiple attempts per placement with hindsight trajectory relabeling
@@ -574,37 +659,40 @@ class UnifiedTrainer:
                     
                     # Estimate goal achievement potential for this action
                     # Use state model to predict value of this action choice
-                    with torch.no_grad():
-                        state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
-                        goal_vector = self.state_model.get_placement_goal_vector(state_tensor)
+                    # Conditionally apply torch.no_grad() if goals are frozen for this part of estimation,
+                    # or ensure goal_vector is detached before use in gradient-affecting computations.
+                    state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+                    with torch.no_grad() if freeze_goals else torch.enable_grad():
+                         goal_vector_raw = self.state_model.get_placement_goal_vector(state_tensor)
+
+                    if goal_vector_raw is not None:
+                        goal_vector = goal_vector_raw.detach() if freeze_goals else goal_vector_raw
+                        # Extract goal components
+                        goal_rotation = torch.argmax(goal_vector[0, :4]).item()
+                        goal_x_pos = torch.argmax(goal_vector[0, 4:14]).item()
+                        goal_y_pos = torch.argmax(goal_vector[0, 14:34]).item()
+                        goal_confidence = goal_vector[0, 35].item()
                         
-                        if goal_vector is not None:
-                            # Extract goal components
-                            goal_rotation = torch.argmax(goal_vector[0, :4]).item()
-                            goal_x_pos = torch.argmax(goal_vector[0, 4:14]).item()
-                            goal_y_pos = torch.argmax(goal_vector[0, 14:34]).item()
-                            goal_confidence = goal_vector[0, 35].item()
-                            
-                            # Convert action to placement (approximate)
-                            action_idx = np.argmax(action_candidate)
-                            # Map action to placement parameters (simplified)
-                            if action_idx < 4:  # Rotation actions
-                                action_rotation = action_idx
-                                action_x = 5  # Default center
-                            elif action_idx < 7:  # Movement actions  
-                                action_rotation = 0  # Default rotation
-                                action_x = (action_idx - 4) * 3 + 2  # Spread across board
-                            else:
-                                action_rotation = 0
-                                action_x = 5
-                            
-                            # Calculate predicted goal achievement
-                            rotation_similarity = 1.0 - abs(action_rotation - goal_rotation) / 4.0
-                            x_similarity = 1.0 - abs(action_x - goal_x_pos) / 10.0
-                            
-                            predicted_goal_reward = (rotation_similarity + x_similarity) * goal_confidence * 15.0
+                        # Convert action to placement (approximate)
+                        action_idx = np.argmax(action_candidate)
+                        # Map action to placement parameters (simplified)
+                        if action_idx < 4:  # Rotation actions
+                            action_rotation = action_idx
+                            action_x = 5  # Default center
+                        elif action_idx < 7:  # Movement actions  
+                            action_rotation = 0  # Default rotation
+                            action_x = (action_idx - 4) * 3 + 2  # Spread across board
                         else:
-                            predicted_goal_reward = 1.0  # Default if no goal available
+                            action_rotation = 0
+                            action_x = 5
+                        
+                        # Calculate predicted goal achievement
+                        rotation_similarity = 1.0 - abs(action_rotation - goal_rotation) / 4.0
+                        x_similarity = 1.0 - abs(action_x - goal_x_pos) / 10.0
+                        
+                        predicted_goal_reward = (rotation_similarity + x_similarity) * goal_confidence * 15.0
+                    else:
+                        predicted_goal_reward = 1.0  # Default if no goal available
                     
                     attempt_actions.append(action_candidate.copy())
                     attempt_rewards.append(predicted_goal_reward)
@@ -969,7 +1057,7 @@ class UnifiedTrainer:
             print(f"Error in hindsight goal calculation: {e}")
             return 1.0  # Fallback reward
 
-    def phase_5_ppo_training(self, batch):
+    def phase_5_ppo_training(self, batch, goal_gradient_mode="full_gradients"):
         """
         Phase 5: Enhanced PPO training with Hindsight Experience Replay
         """
@@ -991,7 +1079,8 @@ class UnifiedTrainer:
             # Use enhanced PPO with hindsight relabelling
             losses = self.actor_critic.train_ppo_with_hindsight(
                 batch_size=self.config.ppo_batch_size,
-                ppo_epochs=self.config.ppo_epochs
+                ppo_epochs=self.config.ppo_epochs,
+                goal_gradient_mode=goal_gradient_mode  # Pass the gradient mode
             )
             
             if losses:

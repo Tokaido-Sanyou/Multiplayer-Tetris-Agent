@@ -961,7 +961,7 @@ class DeterministicTerminalExplorer:
         """
         Generate terminal states through a sequential chain of pieces
         Each piece placement leads to ALL possible terminal states of the next piece
-        FIXED: Limited to 3 pieces to prevent exponential explosion
+        ENHANCED: Now starts with partially filled boards for realistic line clearing opportunities
         
         Args:
             sequence_length: Number of pieces in the sequence (default 3, max recommended)
@@ -977,37 +977,244 @@ class DeterministicTerminalExplorer:
         self.state_hash_set = set()
         self.sequence_length = sequence_length
         
-        # Start with fresh environment
-        obs = self.env.reset()
-        initial_state = self._obs_to_state_vector(obs)
+        # CRITICAL FIX: Start with PARTIALLY FILLED boards to enable line clearing
+        # Generate multiple starting scenarios with different fill levels
+        starting_scenarios = self._generate_line_clearing_scenarios()
         
-        # Generate sequence of random pieces
-        piece_sequence = [np.random.randint(0, self.piece_types) for _ in range(sequence_length)]
-        print(f"   🎲 Piece sequence: {[['S','Z','I','O','J','L','T'][p] for p in piece_sequence]}")
+        all_terminal_states = []
         
-        # Start recursive chain generation
-        terminal_states = self._generate_sequential_chain(
-            state=initial_state,
-            piece_sequence=piece_sequence,
-            chain_depth=0,
-            placement_history=[]
-        )
+        for scenario_idx, initial_state in enumerate(starting_scenarios):
+            print(f"   📋 Scenario {scenario_idx + 1}/{len(starting_scenarios)}: {self._describe_board_state(initial_state)}")
+            
+            # Generate sequence of random pieces
+            piece_sequence = [np.random.randint(0, self.piece_types) for _ in range(sequence_length)]
+            print(f"   🎲 Piece sequence: {[['S','Z','I','O','J','L','T'][p] for p in piece_sequence]}")
+            
+            # Start recursive chain generation
+            scenario_terminals = self._generate_sequential_chain(
+                state=initial_state,
+                piece_sequence=piece_sequence,
+                chain_depth=0,
+                placement_history=[],
+                scenario_id=scenario_idx
+            )
+            
+            all_terminal_states.extend(scenario_terminals)
+            
+            print(f"   📊 Scenario {scenario_idx + 1} generated {len(scenario_terminals)} terminal states")
         
         print(f"✅ Sequential exploration completed:")
-        print(f"   • Total terminal states generated: {len(terminal_states)}")
-        print(f"   • Chain depth reached: {max([t.get('chain_depth', 0) for t in terminal_states]) if terminal_states else 0}")
+        print(f"   • Total terminal states generated: {len(all_terminal_states)}")
+        print(f"   • Starting scenarios: {len(starting_scenarios)}")
+        print(f"   • Chain depth reached: {max([t.get('chain_depth', 0) for t in all_terminal_states]) if all_terminal_states else 0}")
         print(f"   • Final sequence length: {sequence_length}")
         
         # Show distribution by chain depth
         depth_distribution = {}
-        for terminal in terminal_states:
+        for terminal in all_terminal_states:
             depth = terminal.get('chain_depth', 0)
             depth_distribution[depth] = depth_distribution.get(depth, 0) + 1
         print(f"   • States by chain depth: {dict(sorted(depth_distribution.items()))}")
         
-        return terminal_states
+        return all_terminal_states
     
-    def _generate_sequential_chain(self, state, piece_sequence, chain_depth, placement_history):
+    def _generate_line_clearing_scenarios(self):
+        """
+        CRITICAL NEW METHOD: Generate multiple starting board scenarios with line clearing potential
+        This replaces empty board starts with realistic game states that can achieve line clears
+        
+        Returns:
+            List of state vectors representing different board fill scenarios
+        """
+        scenarios = []
+        
+        # Scenario 1: Near-complete lines (8-9 filled cells per row)
+        scenario_1 = self._create_near_complete_line_scenario()
+        scenarios.append(scenario_1)
+        
+        # Scenario 2: Well setup for I-piece Tetris
+        scenario_2 = self._create_tetris_well_scenario()
+        scenarios.append(scenario_2)
+        
+        # Scenario 3: Multiple partial lines
+        scenario_3 = self._create_multiple_partial_lines_scenario()
+        scenarios.append(scenario_3)
+        
+        # Scenario 4: T-spin setup
+        scenario_4 = self._create_t_spin_scenario()
+        scenarios.append(scenario_4)
+        
+        # Scenario 5: Random mid-game state
+        scenario_5 = self._create_random_mid_game_scenario()
+        scenarios.append(scenario_5)
+        
+        return scenarios
+    
+    def _create_near_complete_line_scenario(self):
+        """Create scenario with near-complete lines (8-9 filled cells)"""
+        state = np.zeros(410)
+        
+        # Create empty grid (1 = empty, 0 = occupied)
+        empty_grid = np.ones((20, 10))
+        
+        # Fill bottom 3 rows with near-complete lines
+        for row in [19, 18, 17]:  # Bottom 3 rows
+            filled_positions = np.random.choice(10, 8, replace=False)  # 8 random positions
+            for pos in filled_positions:
+                empty_grid[row, pos] = 0  # Mark as occupied
+        
+        # Add some scattered blocks above
+        for row in [16, 15, 14]:
+            filled_positions = np.random.choice(10, np.random.randint(3, 6), replace=False)
+            for pos in filled_positions:
+                empty_grid[row, pos] = 0
+        
+        state[200:400] = empty_grid.flatten()
+        
+        # Random next piece
+        next_piece_idx = np.random.randint(0, 7)
+        state[400 + next_piece_idx] = 1.0
+        
+        # Random metadata
+        state[407] = np.random.uniform(0, 1)  # rotation
+        state[408] = np.random.uniform(0, 1)  # x_pos
+        state[409] = np.random.uniform(0, 1)  # y_pos
+        
+        return state
+    
+    def _create_tetris_well_scenario(self):
+        """Create scenario with a well setup for I-piece Tetris"""
+        state = np.zeros(410)
+        empty_grid = np.ones((20, 10))
+        
+        # Create a well in column 9 (rightmost)
+        well_column = 9
+        well_height = 4
+        
+        # Fill all columns except the well column for bottom rows
+        for row in range(20 - well_height, 20):  # Bottom 4 rows
+            for col in range(10):
+                if col != well_column:
+                    empty_grid[row, col] = 0  # Occupied
+        
+        # Add some random fill above
+        for row in range(20 - well_height - 3, 20 - well_height):
+            filled_positions = np.random.choice([c for c in range(10) if c != well_column], 
+                                              np.random.randint(4, 7), replace=False)
+            for pos in filled_positions:
+                empty_grid[row, pos] = 0
+        
+        state[200:400] = empty_grid.flatten()
+        
+        # Bias toward I-piece for Tetris potential
+        state[400 + 2] = 1.0  # I-piece is index 2
+        
+        state[407] = 0.25  # rotation 1 (vertical I-piece)
+        state[408] = 0.9   # x_pos near well
+        state[409] = 0.2   # y_pos near top
+        
+        return state
+    
+    def _create_multiple_partial_lines_scenario(self):
+        """Create scenario with multiple partial lines at different fill levels"""
+        state = np.zeros(410)
+        empty_grid = np.ones((20, 10))
+        
+        # Create lines with different fill levels
+        fill_patterns = [6, 7, 8, 9, 7, 6]  # Different fill amounts
+        
+        for i, fill_amount in enumerate(fill_patterns):
+            row = 19 - i  # Start from bottom
+            if row >= 0:
+                filled_positions = np.random.choice(10, fill_amount, replace=False)
+                for pos in filled_positions:
+                    empty_grid[row, pos] = 0
+        
+        state[200:400] = empty_grid.flatten()
+        
+        # Random next piece
+        next_piece_idx = np.random.randint(0, 7)
+        state[400 + next_piece_idx] = 1.0
+        
+        state[407] = np.random.uniform(0, 1)
+        state[408] = np.random.uniform(0, 1)
+        state[409] = np.random.uniform(0, 1)
+        
+        return state
+    
+    def _create_t_spin_scenario(self):
+        """Create scenario set up for T-spin opportunities"""
+        state = np.zeros(410)
+        empty_grid = np.ones((20, 10))
+        
+        # Create T-spin setup pattern
+        bottom_row = 19
+        
+        # Fill most of bottom row except T-spin hole
+        t_spin_x = 5  # Middle position
+        for col in range(10):
+            if col not in [t_spin_x - 1, t_spin_x, t_spin_x + 1]:  # Leave T-shape space
+                empty_grid[bottom_row, col] = 0
+                
+        # Create overhang for T-spin
+        empty_grid[bottom_row - 1, t_spin_x] = 0  # Block above center
+        
+        # Fill surrounding areas
+        for row in [bottom_row - 2, bottom_row - 3]:
+            filled_positions = np.random.choice(10, np.random.randint(6, 8), replace=False)
+            for pos in filled_positions:
+                empty_grid[row, pos] = 0
+        
+        state[200:400] = empty_grid.flatten()
+        
+        # Bias toward T-piece
+        state[400 + 6] = 1.0  # T-piece is index 6
+        
+        state[407] = 0.0   # rotation 0
+        state[408] = 0.5   # x_pos centered
+        state[409] = 0.1   # y_pos near bottom
+        
+        return state
+    
+    def _create_random_mid_game_scenario(self):
+        """Create random mid-game scenario with varied fill"""
+        state = np.zeros(410)
+        empty_grid = np.ones((20, 10))
+        
+        # Random mid-game fill pattern
+        for row in range(10, 20):  # Bottom half
+            fill_probability = 0.3 + (20 - row) * 0.05  # More fill toward bottom
+            for col in range(10):
+                if np.random.random() < fill_probability:
+                    empty_grid[row, col] = 0
+        
+        state[200:400] = empty_grid.flatten()
+        
+        # Random next piece
+        next_piece_idx = np.random.randint(0, 7)
+        state[400 + next_piece_idx] = 1.0
+        
+        state[407] = np.random.uniform(0, 1)
+        state[408] = np.random.uniform(0, 1)
+        state[409] = np.random.uniform(0, 1)
+        
+        return state
+    
+    def _describe_board_state(self, state):
+        """Describe the board state for logging"""
+        empty_grid = state[200:400].reshape(20, 10)
+        occupied_cells = np.sum(1 - empty_grid)
+        
+        # Count near-complete lines
+        near_complete = 0
+        for row in range(20):
+            filled = np.sum(1 - empty_grid[row, :])
+            if filled >= 8:
+                near_complete += 1
+        
+        return f"{occupied_cells:.0f} filled cells, {near_complete} near-complete lines"
+    
+    def _generate_sequential_chain(self, state, piece_sequence, chain_depth, placement_history, scenario_id):
         """
         Recursively generate sequential chain of piece placements
         
@@ -1016,6 +1223,7 @@ class DeterministicTerminalExplorer:
             piece_sequence: List of piece indices to place
             chain_depth: Current depth in the chain (0-based)
             placement_history: List of previous placements for tracking
+            scenario_id: Identifier for the current scenario
         Returns:
             List of terminal states generated from this chain
         """
@@ -1067,7 +1275,8 @@ class DeterministicTerminalExplorer:
                     'piece_shape_name': current_piece_name,
                     'placement_history': placement_history + [(rotation, x_pos, y_pos, current_piece_name)],
                     'validated': True,
-                    'is_chain_terminal': True
+                    'is_chain_terminal': True,
+                    'scenario_id': scenario_id
                 }
                 terminal_states.append(terminal_entry)
                 
@@ -1078,7 +1287,8 @@ class DeterministicTerminalExplorer:
                         state=resulting_state,
                         piece_sequence=piece_sequence,
                         chain_depth=chain_depth + 1,
-                        placement_history=placement_history + [(rotation, x_pos, y_pos, current_piece_name)]
+                        placement_history=placement_history + [(rotation, x_pos, y_pos, current_piece_name)],
+                        scenario_id=scenario_id
                     )
                     
                     # Add current placement info to each terminal state from next pieces
@@ -1102,7 +1312,8 @@ class DeterministicTerminalExplorer:
                             'validated': True,
                             'is_chain_terminal': False,
                             'leads_to_terminals': len(next_piece_terminals),
-                            'next_piece_name': ['S','Z','I','O','J','L','T'][piece_sequence[chain_depth + 1]] if chain_depth + 1 < len(piece_sequence) else None
+                            'next_piece_name': ['S','Z','I','O','J','L','T'][piece_sequence[chain_depth + 1]] if chain_depth + 1 < len(piece_sequence) else None,
+                            'scenario_id': scenario_id
                         }
                         terminal_states.append(intermediate_terminal)
                     
@@ -1240,8 +1451,10 @@ class DeterministicTerminalExplorer:
         resulting_state[408] = x_pos / 10.0    # Normalized x position  
         resulting_state[409] = y_pos / 20.0    # Normalized y position
         
-        # Calculate placement value based on ALL block positions
-        placement_value = self._calculate_placement_value(x_pos, y_pos, rotation, piece_idx, formatted_positions)
+        # CRITICAL FIX: Calculate placement value using ACTUAL board state for line clearing
+        placement_value = self._calculate_placement_value_with_real_state(
+            current_state, resulting_state, x_pos, y_pos, rotation, piece_idx, formatted_positions
+        )
         
         # Validation: Ensure we placed the expected number of blocks
         if placed_blocks == 0:
@@ -1250,6 +1463,211 @@ class DeterministicTerminalExplorer:
             print(f"     ⚠️  Warning: Too many blocks placed ({placed_blocks}) for piece at ({x_pos}, {y_pos}, rot={rotation})")
         
         return resulting_state, placement_value
+    
+    def _calculate_placement_value_with_real_state(self, before_state, after_state, x_pos, y_pos, rotation, piece_type, formatted_positions):
+        """
+        FIXED: Calculate placement value using ACTUAL board states for line clearing
+        This replaces the old mock state approach with real state transition analysis
+        
+        Args:
+            before_state: State before placement
+            after_state: State after placement
+            x_pos, y_pos, rotation, piece_type: Placement parameters
+            formatted_positions: Actual piece positions
+        Returns:
+            placement_value: Value including realistic line clearing opportunities
+        """
+        # CRITICAL: Use REAL state transition for line clearing calculation
+        line_clear_value = self._calculate_deterministic_line_clearing_from_states(
+            before_state, after_state, formatted_positions
+        )
+        
+        # Base scoring factors (kept for diversity)
+        center_bonus = 5.0 - abs(x_pos - 4.5)  # Prefer center positions
+        height_bonus = max(0, 20 - y_pos)      # Prefer lower positions
+        rotation_penalty = rotation * 0.5      # Slight penalty for rotation
+        
+        # Piece-specific bonuses
+        piece_bonuses = [2.0, 1.5, 3.0, 1.0, 2.5, 2.5, 2.0]  # S, Z, I, O, J, L, T
+        piece_bonus = piece_bonuses[piece_type] if piece_type < len(piece_bonuses) else 2.0
+        
+        # Compactness bonus (how tightly packed the piece positions are)
+        if len(formatted_positions) > 1:
+            min_x = min(pos[0] for pos in formatted_positions)
+            max_x = max(pos[0] for pos in formatted_positions)
+            min_y = min(pos[1] for pos in formatted_positions)
+            max_y = max(pos[1] for pos in formatted_positions)
+            compactness = 5.0 - (max_x - min_x) - (max_y - min_y)
+        else:
+            compactness = 5.0
+        
+        # ENHANCED: Combine factors with LINE CLEARING as primary objective
+        base_value = center_bonus + height_bonus + piece_bonus + compactness - rotation_penalty
+        
+        # Add some deterministic variation
+        variation_factor = ((x_pos + y_pos + rotation + piece_type) % 7) * 0.3
+        
+        # CRITICAL: Combine with REAL line clearing value (3x weight like RND)
+        final_value = (
+            line_clear_value * 3.0 +  # 🔥 LINE CLEARING VALUE (3x weight - most important!)
+            base_value +              # Structural factors for diversity
+            variation_factor          # Deterministic variation
+        )
+        
+        # Clamp to expanded range for line clears
+        return max(-100.0, min(200.0, final_value))
+    
+    def _calculate_deterministic_line_clearing_from_states(self, before_state, after_state, piece_positions):
+        """
+        CRITICAL FIX: Calculate line clearing value using actual before/after state transition
+        This analyzes REAL board states to detect line clearing opportunities
+        
+        Args:
+            before_state: State vector before placement
+            after_state: State vector after placement  
+            piece_positions: List of (x,y) positions where piece was placed
+        Returns:
+            line_clear_value: Realistic line clearing value based on actual board evolution
+        """
+        try:
+            # Extract REAL board states
+            before_empty_grid = before_state[200:400].reshape(20, 10)
+            after_empty_grid = after_state[200:400].reshape(20, 10)
+            
+            # Convert to occupied cell representation (1 = occupied, 0 = empty)
+            before_board = 1 - before_empty_grid  # Occupied cells before placement
+            after_board = 1 - after_empty_grid    # Occupied cells after placement
+            
+            # Calculate lines that would be cleared by this placement
+            lines_cleared = 0
+            cleared_lines = []
+            potential_lines = []
+            
+            # Check each row to see if placement creates line clears
+            for row in range(20):
+                before_filled = np.sum(before_board[row, :])
+                after_filled = np.sum(after_board[row, :])
+                
+                # Line clearing detection
+                if after_filled >= 10.0:  # Full line after placement
+                    lines_cleared += 1
+                    cleared_lines.append(row)
+                elif after_filled >= 8.0:  # Near-complete line
+                    potential_lines.append((row, after_filled))
+            
+            # Calculate line clearing rewards (same as real exploration)
+            line_clear_reward = 0
+            if lines_cleared > 0:
+                # Use actual Tetris scoring
+                line_clear_base = {1: 100, 2: 200, 3: 400, 4: 1600}
+                line_clear_reward = line_clear_base.get(lines_cleared, lines_cleared * 400)
+                
+                # Add bonus for clearing multiple lines simultaneously
+                if lines_cleared >= 2:
+                    line_clear_reward *= 1.5
+                
+                print(f"     🔥 DETERMINISTIC LINE CLEAR! {lines_cleared} lines, reward: {line_clear_reward}")
+            
+            # Calculate line clearing POTENTIAL (near-complete lines)
+            line_potential = 0
+            for row, filled_count in potential_lines:
+                potential_value = (filled_count - 7) * 10  # 10, 20, 30 for 8, 9, 10 filled
+                line_potential += potential_value
+            
+            # Strategic improvement from placement
+            strategic_improvement = self._calculate_deterministic_strategic_improvement(
+                before_board, after_board, piece_positions
+            )
+            
+            # Total line clearing value
+            total_line_value = line_clear_reward + line_potential + strategic_improvement
+            
+            return total_line_value
+            
+        except Exception as e:
+            print(f"Error in deterministic line clearing calculation: {e}")
+            return 0.0  # Fallback
+    
+    def _calculate_deterministic_strategic_improvement(self, before_board, after_board, piece_positions):
+        """
+        Calculate strategic board improvements for deterministic exploration
+        """
+        try:
+            # Calculate height changes
+            before_height = self._calculate_board_height_det(before_board)
+            after_height = self._calculate_board_height_det(after_board)
+            height_improvement = max(0, before_height - after_height) * 5
+            
+            # Calculate hole changes
+            before_holes = self._count_board_holes_det(before_board)
+            after_holes = self._count_board_holes_det(after_board)
+            hole_improvement = max(0, before_holes - after_holes) * 15
+            
+            # Well creation (good for I-pieces)
+            well_value = self._calculate_well_creation_value(after_board, piece_positions)
+            
+            return height_improvement + hole_improvement + well_value
+            
+        except Exception as e:
+            return 0.0
+    
+    def _calculate_board_height_det(self, board):
+        """Calculate maximum height of board for deterministic exploration"""
+        for row in range(20):
+            if np.sum(board[row, :]) > 0:
+                return 20 - row
+        return 0
+    
+    def _count_board_holes_det(self, board):
+        """Count holes in board for deterministic exploration"""
+        holes = 0
+        for col in range(10):
+            filled_found = False
+            for row in range(20):
+                if board[row, col] > 0:
+                    filled_found = True
+                elif filled_found and board[row, col] == 0:
+                    holes += 1
+        return holes
+    
+    def _calculate_well_creation_value(self, board, piece_positions):
+        """Calculate value of creating wells (good for future I-piece tetris)"""
+        well_value = 0
+        
+        # Check if piece created any useful wells
+        for x, y in piece_positions:
+            if 0 <= x < 10 and 0 <= y < 20:
+                # Check adjacent columns for height differences
+                left_height = 0
+                right_height = 0
+                
+                if x > 0:  # Left column
+                    for row in range(20):
+                        if board[row, x-1] > 0:
+                            left_height = 20 - row
+                            break
+                
+                if x < 9:  # Right column
+                    for row in range(20):
+                        if board[row, x+1] > 0:
+                            right_height = 20 - row
+                            break
+                
+                # Current column height
+                current_height = 0
+                for row in range(20):
+                    if board[row, x] > 0:
+                        current_height = 20 - row
+                        break
+                
+                # Well bonus (height differences of 3+ are good)
+                left_diff = max(0, left_height - current_height)
+                right_diff = max(0, right_height - current_height)
+                
+                if left_diff >= 3 or right_diff >= 3:
+                    well_value += min(left_diff, right_diff) * 3
+        
+        return well_value
     
     def _get_piece_positions(self, piece_shape, rotation, x_pos, y_pos):
         """Get list of (x,y) positions occupied by piece"""
@@ -1424,49 +1842,6 @@ class DeterministicTerminalExplorer:
         
         return grid
     
-    def _calculate_placement_value(self, x_pos, y_pos, rotation, piece_type, formatted_positions):
-        """
-        Calculate the quality value of a terminal placement
-        
-        Args:
-            x_pos: X position
-            y_pos: Y position  
-            rotation: Rotation state
-            piece_type: Piece type index
-            formatted_positions: List of (x,y) positions the piece occupies
-        Returns:
-            float: Terminal value representing placement quality
-        """
-        # Base scoring factors
-        center_bonus = 5.0 - abs(x_pos - 4.5)  # Prefer center positions
-        height_bonus = max(0, 20 - y_pos)      # Prefer lower positions (higher height_bonus)
-        rotation_penalty = rotation * 0.5      # Slight penalty for rotation
-        
-        # Piece-specific bonuses
-        piece_bonuses = [2.0, 1.5, 3.0, 1.0, 2.5, 2.5, 2.0]  # S, Z, I, O, J, L, T
-        piece_bonus = piece_bonuses[piece_type] if piece_type < len(piece_bonuses) else 2.0
-        
-        # Compactness bonus (how tightly packed the piece positions are)
-        if len(formatted_positions) > 1:
-            min_x = min(pos[0] for pos in formatted_positions)
-            max_x = max(pos[0] for pos in formatted_positions)
-            min_y = min(pos[1] for pos in formatted_positions)
-            max_y = max(pos[1] for pos in formatted_positions)
-            compactness = 5.0 - (max_x - min_x) - (max_y - min_y)
-        else:
-            compactness = 5.0
-        
-        # Combine factors
-        base_value = center_bonus + height_bonus + piece_bonus + compactness - rotation_penalty
-        
-        # Add some deterministic variation
-        variation_factor = ((x_pos + y_pos + rotation + piece_type) % 7) * 0.3
-        
-        final_value = base_value + variation_factor
-        
-        # Clamp to reasonable range
-        return max(-20.0, min(50.0, final_value))
-    
     def _hash_terminal_state(self, terminal_state):
         """Generate hash for terminal state to check uniqueness"""
         # Use key components for hashing to detect true duplicates
@@ -1579,10 +1954,13 @@ class TrueRandomExplorer:
         return placement_data
     
     def _generate_random_terminal(self, current_state, rotation, x_pos, y_pos, piece_type):
-        """Generate completely random terminal state"""
+        """
+        Generate random terminal state with LINE CLEARING VALUE included
+        ENHANCED: Now includes realistic line clearing potential instead of pure random
+        """
         terminal_state = current_state.copy()
         
-        # Apply random modifications to entire state
+        # Apply random modifications to entire state (keep some randomness)
         random_noise = np.random.uniform(-0.3, 0.3, len(terminal_state))
         terminal_state = terminal_state + random_noise
         
@@ -1591,10 +1969,115 @@ class TrueRandomExplorer:
         terminal_state[408] = x_pos / 10.0
         terminal_state[409] = y_pos / 20.0
         
-        # Calculate random terminal value
-        terminal_value = np.random.uniform(-20, 20)  # Completely random value
+        # ENHANCED: Calculate line clearing value even for random exploration
+        line_clear_value = self._calculate_line_clearing_value_random(
+            current_state, rotation, x_pos, piece_type, y_pos
+        )
+        
+        # Random base value (keep some randomness for exploration diversity)
+        random_base = np.random.uniform(-20, 20)
+        
+        # CRITICAL: Combine line clearing value with random component
+        terminal_value = (
+            line_clear_value * 2.0 +  # 🔥 LINE CLEARING VALUE (2x weight for random - still important!)
+            random_base               # Random component for exploration diversity
+        )
+        
+        # Clamp to expanded range
+        terminal_value = max(-100.0, min(200.0, terminal_value))
         
         return terminal_state, terminal_value
+    
+    def _calculate_line_clearing_value_random(self, current_state, rotation, x_pos, piece_type, y_pos):
+        """
+        Calculate line clearing value for random exploration
+        Simplified version focusing on line clearing potential
+        """
+        try:
+            # Extract board state
+            empty_grid = current_state[200:400].reshape(20, 10)
+            board = 1 - empty_grid  # Invert empty grid to get occupied cells
+            
+            # Add some randomness to board state for exploration
+            noise = np.random.uniform(-0.1, 0.1, board.shape)
+            noisy_board = np.clip(board + noise, 0, 1)
+            
+            # Simulate placing the piece
+            simulated_board = noisy_board.copy()
+            
+            # Get piece positions (simplified)
+            piece_positions = self._get_approximate_piece_positions_random(rotation, x_pos, y_pos, piece_type)
+            
+            for row, col in piece_positions:
+                if 0 <= row < 20 and 0 <= col < 10:
+                    simulated_board[row, col] = 1
+            
+            # Calculate lines that would be cleared
+            lines_cleared = 0
+            for row in range(20):
+                filled_ratio = np.sum(simulated_board[row, :]) / 10.0
+                if filled_ratio >= 0.9:  # Relaxed threshold for random exploration
+                    lines_cleared += 1
+            
+            # Calculate line clearing rewards
+            line_clear_reward = 0
+            if lines_cleared > 0:
+                # Use actual Tetris scoring with random bonus
+                line_clear_base = {1: 100, 2: 200, 3: 400, 4: 1600}
+                line_clear_reward = line_clear_base.get(lines_cleared, lines_cleared * 400)
+                
+                # Add random bonus for exploration
+                random_bonus = np.random.uniform(0.8, 1.2)
+                line_clear_reward *= random_bonus
+            
+            # Calculate line clearing POTENTIAL with random exploration bias
+            line_potential = 0
+            for row in range(20):
+                filled_ratio = np.sum(simulated_board[row, :]) / 10.0
+                if filled_ratio >= 0.7:  # Lower threshold for random exploration
+                    potential_value = filled_ratio * 30  # Scale by fill ratio
+                    line_potential += potential_value
+            
+            return line_clear_reward + line_potential
+            
+        except Exception as e:
+            return np.random.uniform(0, 50)  # Random fallback
+    
+    def _get_approximate_piece_positions_random(self, rotation, x_pos, y_pos, piece_type):
+        """
+        Get approximate piece positions for random exploration
+        With added randomness for exploration diversity
+        """
+        positions = []
+        
+        # Add small random offset for exploration diversity
+        offset_x = np.random.randint(-1, 2)  # -1, 0, or 1
+        offset_y = np.random.randint(-1, 2)  # -1, 0, or 1
+        
+        # Basic piece footprints with random variation
+        if piece_type == 1:  # I-piece
+            if rotation % 2 == 0:  # Horizontal
+                positions = [(y_pos + offset_y, x_pos + i + offset_x) for i in range(4)]
+            else:  # Vertical
+                positions = [(y_pos + i + offset_y, x_pos + offset_x) for i in range(4)]
+        elif piece_type == 2:  # O-piece
+            positions = [
+                (y_pos + offset_y, x_pos + offset_x), 
+                (y_pos + offset_y, x_pos + 1 + offset_x),
+                (y_pos + 1 + offset_y, x_pos + offset_x), 
+                (y_pos + 1 + offset_y, x_pos + 1 + offset_x)
+            ]
+        else:  # Other pieces - random footprint
+            positions = [
+                (y_pos + offset_y, x_pos + offset_x),
+                (y_pos + offset_y, x_pos + 1 + offset_x),
+                (y_pos + 1 + offset_y, x_pos + offset_x),
+                (y_pos + 1 + offset_y, x_pos + 1 + offset_x)
+            ]
+        
+        # Filter valid positions
+        valid_positions = [(r, c) for r, c in positions if 0 <= r < 20 and 0 <= c < 10]
+        return valid_positions
     
     def _obs_to_state_vector(self, obs):
         """Convert observation to state vector (410-dimensional)"""
