@@ -69,6 +69,7 @@ class TetrisConfig:
     GRID_WIDTH = 10
     STATE_DIM = 410  # NEW: 200 + 200 + 7 + 3 = 410 (removed 7-piece grids + hold piece)
     ACTION_DIM = 8   # One-hot encoded actions
+    GOAL_DIM = 36    # Goal vector from state model: 4 (rotation) + 10 (x) + 20 (y) + 1 (value) + 1 (confidence)
     
     # State vector breakdown:
     CURRENT_PIECE_GRID_DIM = GRID_HEIGHT * GRID_WIDTH  # 200
@@ -90,6 +91,7 @@ class TetrisConfig:
         - Hole penalties encourage clean placement
         - Bumpiness penalties encourage smooth surfaces
         - Terminal penalties heavily discourage game over
+        - Piece presence rewards encourage longer games (decreasing over training)
         """
         
         # Environment reward parameters (tetris_env.py)
@@ -98,10 +100,15 @@ class TetrisConfig:
         GAME_OVER_PENALTY = -200  # Heavy penalty for losing
         TIME_PENALTY = -0.01  # Small penalty per step (disabled)
         
-        # Feature-based reward shaping weights
-        HOLE_WEIGHT = 4.0      # Penalty per hole created/filled
-        MAX_HEIGHT_WEIGHT = 10.0  # Penalty for maximum column height changes
-        BUMPINESS_WEIGHT = 1.0    # Penalty for surface irregularity changes
+        # Feature-based reward shaping weights (UPDATED)
+        HOLE_WEIGHT = 0.5      # Penalty per hole created/filled (reduced from 4.0)
+        MAX_HEIGHT_WEIGHT = 5.0   # Penalty for maximum column height changes (reduced from 10.0)
+        BUMPINESS_WEIGHT = 0.2    # Penalty for surface irregularity changes (reduced from 1.0)
+        
+        # NEW: Piece presence reward system
+        PIECE_PRESENCE_REWARD = 1.0      # Base reward per piece on board
+        PIECE_PRESENCE_DECAY_STEPS = 500  # Steps over which to decay to 0 (first half of 1000 episodes)
+        PIECE_PRESENCE_MIN = 0.0         # Minimum piece presence reward
         
         # Exploration actor reward parameters (exploration_actor.py)
         # Used for evaluating terminal states during placement trials
@@ -153,7 +160,15 @@ class TetrisConfig:
         class ActorCritic:
             # Input processing
             STATE_DIM = 410                                    # NEW: Simplified state
+            GOAL_DIM = 36                                      # Goal vector from state model
             SHARED_HIDDEN = [512, 256, 128]                   # Shared feature layers
+            
+            # Goal encoder dimensions
+            GOAL_ENCODER_LAYERS = [36, 64, 64]                # Goal processing layers
+            GOAL_FEATURES = 64                                # Output from goal encoder
+            
+            # Combined features = STATE_FEATURES + GOAL_FEATURES = 128 + 64 = 192
+            COMBINED_FEATURES = 192                           # Total feature dimension
             
             # Actor network (policy) - outputs 8 binary decisions
             ACTOR_HIDDEN_LAYERS = [256, 128]                  # Actor-specific layers
@@ -207,12 +222,12 @@ class TetrisConfig:
         # Device configuration
         DEVICE = 'auto'  # 'auto', 'cuda', 'mps', or 'cpu'
         
-        # Overall training schedule
-        NUM_BATCHES = 100          # Total training batches
+        # Overall training schedule - Extended to 1000 total episodes
+        NUM_BATCHES = 50          # Total training batches  
         BATCH_SIZE = 32            # Experience batch size
         
         # Phase 1: Exploration
-        EXPLORATION_EPISODES = 50   # Episodes per batch for data collection
+        EXPLORATION_EPISODES = 20   # Episodes per batch for data collection (50 * 20 = 1000 total)
         
         # Phase 2: State Model Training  
         STATE_TRAINING_SAMPLES = 1000  # Max samples to use per batch
@@ -225,7 +240,7 @@ class TetrisConfig:
         MIN_BUFFER_SIZE = 1000      # Minimum experiences before training
         
         # Phase 4: Exploitation  
-        EXPLOITATION_EPISODES = 20   # Policy rollout episodes per batch
+        EXPLOITATION_EPISODES = 20   # Policy rollout episodes per batch (50 * 20 = 1000 total)
         
         # Phase 5: PPO Training
         PPO_ITERATIONS = 3          # PPO update iterations per batch
@@ -235,6 +250,9 @@ class TetrisConfig:
         
         # Phase 6: Evaluation
         EVAL_EPISODES = 10          # Pure evaluation episodes per batch
+        
+        # Episode limits
+        MAX_EPISODE_STEPS = 2000    # Maximum steps per episode (extended for longer games)
         
         # Actor-Critic specific parameters
         ACTOR_LEARNING_RATE = 1e-4

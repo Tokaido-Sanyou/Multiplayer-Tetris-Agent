@@ -60,9 +60,9 @@ class SharedFeatureExtractor(nn.Module):
 
 class ActorCritic(nn.Module):
     """
-    Actor-Critic network with centralized configuration
+    Actor-Critic network with centralized configuration and goal conditioning
     """
-    def __init__(self, state_dim=None, action_dim=None):
+    def __init__(self, state_dim=None, action_dim=None, goal_dim=None):
         super(ActorCritic, self).__init__()
         
         # Get centralized config
@@ -72,16 +72,27 @@ class ActorCritic(nn.Module):
         # Use centralized dimensions
         self.state_dim = state_dim or self.config.STATE_DIM  # 410
         self.action_dim = action_dim or self.config.ACTION_DIM  # 8
+        self.goal_dim = goal_dim or self.config.GOAL_DIM  # 36 (from centralized config)
         
         # Shared feature extractor for current state
         self.feature_extractor = SharedFeatureExtractor(input_dim=self.state_dim)
         
-        # Get shared feature dimension from config
-        shared_feat_dim = self.config.NetworkConfig.SharedFeatureExtractor.OUTPUT_FEATURES  # 128
+        # Goal encoder for processing state model goals (using centralized config)
+        self.goal_encoder = nn.Sequential(
+            nn.Linear(self.goal_dim, self.net_config.GOAL_ENCODER_LAYERS[1]),
+            nn.ReLU(),
+            nn.Linear(self.net_config.GOAL_ENCODER_LAYERS[1], self.net_config.GOAL_FEATURES),
+            nn.ReLU()
+        )
         
-        # Actor network (policy) - outputs binary decisions with centralized config
+        # Get dimensions from centralized config
+        shared_feat_dim = self.config.NetworkConfig.SharedFeatureExtractor.OUTPUT_FEATURES  # 128
+        goal_feat_dim = self.net_config.GOAL_FEATURES  # 64
+        combined_feat_dim = self.net_config.COMBINED_FEATURES  # 192
+        
+        # Actor network (policy) - outputs binary decisions with goal conditioning
         self.actor = nn.Sequential(
-            nn.Linear(shared_feat_dim, self.net_config.ACTOR_HIDDEN_LAYERS[0]),
+            nn.Linear(combined_feat_dim, self.net_config.ACTOR_HIDDEN_LAYERS[0]),
             nn.ReLU(),
             nn.Linear(self.net_config.ACTOR_HIDDEN_LAYERS[0], self.net_config.ACTOR_HIDDEN_LAYERS[1]),
             nn.ReLU(),
@@ -89,28 +100,40 @@ class ActorCritic(nn.Module):
             nn.Sigmoid()  # For binary outputs as specified in config
         )
         
-        # Critic network (value) with centralized config
+        # Critic network (value) with goal conditioning
         self.critic = nn.Sequential(
-            nn.Linear(shared_feat_dim, self.net_config.CRITIC_HIDDEN_LAYERS[0]),
+            nn.Linear(combined_feat_dim, self.net_config.CRITIC_HIDDEN_LAYERS[0]),
             nn.ReLU(),
             nn.Linear(self.net_config.CRITIC_HIDDEN_LAYERS[0], self.net_config.CRITIC_HIDDEN_LAYERS[1]),
             nn.ReLU(),
             nn.Linear(self.net_config.CRITIC_HIDDEN_LAYERS[1], self.net_config.CRITIC_OUTPUT_DIM)
         )
     
-    def forward(self, state):
+    def forward(self, state, goal=None):
         """
-        Forward pass without instruction conditioning (simplified)
+        Forward pass with optional goal conditioning
         Args:
             state: tensor (batch, state_dim)
+            goal: tensor (batch, goal_dim) - optional goal from state model
         Returns:
             action_probs, state_value
         """
-        # Extract features
-        feat = self.feature_extractor(state)
+        # Extract features from state
+        state_feat = self.feature_extractor(state)
+        
+        if goal is not None:
+            # Encode goal and concatenate with state features
+            goal_feat = self.goal_encoder(goal)
+            combined_feat = torch.cat([state_feat, goal_feat], dim=1)
+        else:
+            # Use state features only (pad with zeros for goal features)
+            batch_size = state_feat.shape[0]
+            zero_goal_feat = torch.zeros(batch_size, self.net_config.GOAL_FEATURES, device=state_feat.device)
+            combined_feat = torch.cat([state_feat, zero_goal_feat], dim=1)
+        
         # Get action probabilities and state value
-        action_probs = self.actor(feat)
-        state_value = self.critic(feat)
+        action_probs = self.actor(combined_feat)
+        state_value = self.critic(combined_feat)
         return action_probs, state_value
 
 class ActorCriticAgent:
@@ -184,7 +207,7 @@ class ActorCriticAgent:
 
     def select_action(self, state):
         """
-        Select action using epsilon-greedy policy with one-hot encoding (simplified)
+        Select action using epsilon-greedy policy with goal conditioning from state model
         Args:
             state: flattened array or tensor of shape (state_dim)
         Returns:
@@ -198,10 +221,17 @@ class ActorCriticAgent:
             action_one_hot[action_idx] = 1
             return action_one_hot
             
-        # exploitation (policy)
+        # exploitation (policy with goal conditioning)
         with torch.no_grad():
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            action_probs, _ = self.network(state_tensor)
+            
+            # Get goal from state model if available
+            goal_tensor = None
+            if self.state_model is not None:
+                goal_tensor = self.state_model.get_placement_goal_vector(state_tensor)
+            
+            # Get action probabilities with goal conditioning
+            action_probs, _ = self.network(state_tensor, goal_tensor)
             
             # Convert sigmoid outputs to binary action
             # Take the action with highest probability

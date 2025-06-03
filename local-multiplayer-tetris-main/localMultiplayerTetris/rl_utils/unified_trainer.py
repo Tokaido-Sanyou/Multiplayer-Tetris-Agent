@@ -72,6 +72,10 @@ class UnifiedTrainer:
         self.episode_count = 0
         self.batch_count = 0
         
+        # Episode tracking
+        self.episode_lines_cleared = []  # Track lines cleared per episode
+        self.current_episode_lines = 0  # Lines cleared in current episode
+        
         # Data storage
         self.exploration_data = []
         self.experience_buffer = ReplayBuffer(config.buffer_size)
@@ -193,51 +197,30 @@ class UnifiedTrainer:
     
     def phase_3_reward_prediction(self, batch):
         """
-        Phase 3: Train future reward predictor on collected experience
+        Phase 3: Train future reward predictor on terminal placement data
         """
         logging.info(f"Phase 3: Future reward prediction training (batch {batch})")
         
-        if len(self.experience_buffer) < self.config.min_buffer_size:
-            logging.warning("Insufficient experience for reward prediction training")
+        if not self.exploration_data:
+            logging.warning("No exploration data available for reward prediction training")
             return
             
-        # Sample batch and train future reward predictor
-        batch_data = self.experience_buffer.sample(self.config.reward_batch_size)
-        if batch_data is None:
-            return
+        # Train future reward predictor specifically on terminal placements
+        loss_info = self.future_reward_predictor.train_on_terminal_placements(
+            self.exploration_data[-self.config.state_training_samples:],
+            self.reward_optimizer,
+            num_epochs=self.config.state_epochs
+        )
+        
+        if loss_info:
+            # Log detailed reward predictor losses
+            self.writer.add_scalar('RewardPredictor/TotalLoss', loss_info['total_loss'], batch)
+            self.writer.add_scalar('RewardPredictor/RewardPredictionLoss', loss_info['reward_loss'], batch)
+            self.writer.add_scalar('RewardPredictor/ValuePredictionLoss', loss_info['value_loss'], batch)
             
-        states, actions, rewards, next_states, dones, _, _, _ = batch_data
-        states = states.to(self.device)
-        actions = actions.to(self.device)
-        rewards = rewards.to(self.device)
-        
-        # Convert actions to one-hot
-        action_one_hot = torch.nn.functional.one_hot(actions.long(), 8).float()
-        
-        # Train future reward predictor
-        reward_pred, value_pred = self.future_reward_predictor(states, action_one_hot)
-        reward_loss = torch.nn.functional.mse_loss(reward_pred.squeeze(), rewards)
-        value_loss = torch.nn.functional.mse_loss(value_pred.squeeze(), rewards)  # Use rewards as value target
-        total_loss = reward_loss + value_loss
-        
-        self.reward_optimizer.zero_grad()
-        total_loss.backward()
-        self.reward_optimizer.step()
-        
-        # Log detailed reward predictor losses
-        self.writer.add_scalar('RewardPredictor/TotalLoss', total_loss.item(), batch)
-        self.writer.add_scalar('RewardPredictor/RewardPredictionLoss', reward_loss.item(), batch)
-        self.writer.add_scalar('RewardPredictor/ValuePredictionLoss', value_loss.item(), batch)
-        
-        # Log prediction accuracy metrics
-        with torch.no_grad():
-            reward_mae = torch.nn.functional.l1_loss(reward_pred.squeeze(), rewards)
-            value_mae = torch.nn.functional.l1_loss(value_pred.squeeze(), rewards)
-            self.writer.add_scalar('RewardPredictor/RewardMAE', reward_mae.item(), batch)
-            self.writer.add_scalar('RewardPredictor/ValueMAE', value_mae.item(), batch)
-            logging.info(f"Future reward prediction - Total: {total_loss.item():.4f}, "
-                     f"Reward: {reward_loss.item():.4f}, "
-                     f"Value: {value_loss.item():.4f}")
+            logging.info(f"Future reward prediction - Total: {loss_info['total_loss']:.4f}, "
+                        f"Reward: {loss_info['reward_loss']:.4f}, "
+                        f"Value: {loss_info['value_loss']:.4f}")
     
     def phase_4_exploitation(self, batch):
         """
@@ -249,6 +232,7 @@ class UnifiedTrainer:
         total_steps = 0
         episode_rewards = []
         episode_steps = []
+        batch_lines_cleared = []  # Track lines cleared for this batch
         
         for episode in range(self.config.exploitation_episodes):
             # Enable visualization only for the last episode of each batch if visualize flag is set
@@ -270,6 +254,7 @@ class UnifiedTrainer:
             episode_reward = 0
             steps = 0
             done = False
+            episode_lines = 0  # Track lines cleared in this episode
             
             while not done and steps < self.config.max_episode_steps:
                 # Convert observation to state vector
@@ -281,6 +266,10 @@ class UnifiedTrainer:
                 # Take step
                 next_obs, reward, done, info = self.env.step(action)
                 next_state = self._obs_to_state_vector(next_obs)
+                
+                # Track lines cleared from info
+                if info and 'lines_cleared' in info:
+                    episode_lines += info['lines_cleared']
                 
                 # Store experience
                 self.experience_buffer.push(
@@ -303,8 +292,12 @@ class UnifiedTrainer:
                 self.env = TetrisEnv(single_player=True, headless=True)
                 logging.info(f"Visualization complete, reverting to headless mode")
             
+            # Record episode statistics
             episode_rewards.append(episode_reward)
             episode_steps.append(steps)
+            batch_lines_cleared.append(episode_lines)
+            self.episode_lines_cleared.append(episode_lines)  # Add to global tracking
+            
             total_reward += episode_reward
             total_steps += steps
             self.episode_count += 1
@@ -312,24 +305,35 @@ class UnifiedTrainer:
             # Log individual episode statistics
             self.writer.add_scalar('Exploitation/EpisodeReward', episode_reward, self.episode_count)
             self.writer.add_scalar('Exploitation/EpisodeSteps', steps, self.episode_count)
+            self.writer.add_scalar('Exploitation/EpisodeLinesCleared', episode_lines, self.episode_count)
         
         # Log batch statistics
         avg_reward = total_reward / self.config.exploitation_episodes
         avg_steps = total_steps / self.config.exploitation_episodes
+        avg_lines_cleared = np.mean(batch_lines_cleared) if batch_lines_cleared else 0
         
         self.writer.add_scalar('Exploitation/BatchAvgReward', avg_reward, batch)
         self.writer.add_scalar('Exploitation/BatchAvgSteps', avg_steps, batch)
+        self.writer.add_scalar('Exploitation/BatchAvgLinesCleared', avg_lines_cleared, batch)
         self.writer.add_scalar('Exploitation/BatchStdReward', np.std(episode_rewards), batch)
         self.writer.add_scalar('Exploitation/BatchStdSteps', np.std(episode_steps), batch)
+        self.writer.add_scalar('Exploitation/BatchStdLinesCleared', np.std(batch_lines_cleared), batch)
         self.writer.add_scalar('Exploitation/BatchMaxReward', np.max(episode_rewards), batch)
         self.writer.add_scalar('Exploitation/BatchMinReward', np.min(episode_rewards), batch)
-          # Performance trend analysis
+        self.writer.add_scalar('Exploitation/BatchMaxLinesCleared', np.max(batch_lines_cleared), batch)
+        
+        # Performance trend analysis
         if len(episode_rewards) > 1:
             reward_trend = np.polyfit(range(len(episode_rewards)), episode_rewards, 1)[0]
             self.writer.add_scalar('Exploitation/BatchRewardTrend', reward_trend, batch)
+            
+            if len(batch_lines_cleared) > 1:
+                lines_trend = np.polyfit(range(len(batch_lines_cleared)), batch_lines_cleared, 1)[0]
+                self.writer.add_scalar('Exploitation/BatchLinesTrend', lines_trend, batch)
         
         logging.info(f"Exploitation: avg reward={avg_reward:.2f}±{np.std(episode_rewards):.2f}, "
-                    f"avg steps={avg_steps:.1f}±{np.std(episode_steps):.1f}")
+                    f"avg steps={avg_steps:.1f}±{np.std(episode_steps):.1f}, "
+                    f"avg lines cleared={avg_lines_cleared:.1f}±{np.std(batch_lines_cleared):.1f}")
     
     def phase_5_ppo_training(self, batch):
         """
@@ -477,13 +481,16 @@ class UnifiedTrainer:
 class TrainingConfig:
     """Configuration for unified training"""
     def __init__(self):
-        # Training parameters
-        self.num_batches = 100
-        self.batch_size = 32  # Add batch_size parameter
-        self.exploration_episodes = 50
-        self.exploitation_episodes = 20
-        self.eval_episodes = 10
-        self.max_episode_steps = 2000
+        # Get centralized config
+        tetris_config = TetrisConfig()
+        
+        # Training parameters - use centralized config for 1000 total episodes
+        self.num_batches = tetris_config.TrainingConfig.NUM_BATCHES  # 50
+        self.batch_size = tetris_config.TrainingConfig.BATCH_SIZE  # 32
+        self.exploration_episodes = tetris_config.TrainingConfig.EXPLORATION_EPISODES  # 20 (50 * 20 = 1000 total)
+        self.exploitation_episodes = tetris_config.TrainingConfig.EXPLOITATION_EPISODES  # 20 (50 * 20 = 1000 total)
+        self.eval_episodes = tetris_config.TrainingConfig.EVAL_EPISODES  # 10
+        self.max_episode_steps = tetris_config.TrainingConfig.MAX_EPISODE_STEPS  # 2000
         
         # Device detection
         if torch.cuda.is_available():
@@ -496,32 +503,32 @@ class TrainingConfig:
             self.device = 'cpu'
             print("Using CPU - no GPU detected")
         
-        # Model parameters
-        self.state_lr = 1e-3
-        self.reward_lr = 1e-3
-        self.clip_ratio = 0.2
+        # Model parameters - use centralized config
+        self.state_lr = tetris_config.TrainingConfig.STATE_LEARNING_RATE  # 1e-3
+        self.reward_lr = tetris_config.TrainingConfig.REWARD_LEARNING_RATE  # 1e-3
+        self.clip_ratio = tetris_config.TrainingConfig.PPO_CLIP_RATIO  # 0.2
         
-        # Training phases
-        self.state_training_samples = 1000
-        self.state_epochs = 5
-        self.ppo_iterations = 3
-        self.ppo_batch_size = 64
-        self.ppo_epochs = 4
-        self.reward_batch_size = 64
+        # Training phases - use centralized config
+        self.state_training_samples = tetris_config.TrainingConfig.STATE_TRAINING_SAMPLES  # 1000
+        self.state_epochs = tetris_config.TrainingConfig.STATE_EPOCHS  # 5
+        self.ppo_iterations = tetris_config.TrainingConfig.PPO_ITERATIONS  # 3
+        self.ppo_batch_size = tetris_config.TrainingConfig.PPO_BATCH_SIZE  # 64
+        self.ppo_epochs = tetris_config.TrainingConfig.PPO_EPOCHS  # 4
+        self.reward_batch_size = tetris_config.TrainingConfig.REWARD_BATCH_SIZE  # 64
         
-        # Buffer parameters
-        self.buffer_size = 100000
-        self.min_buffer_size = 1000
+        # Buffer parameters - use centralized config
+        self.buffer_size = tetris_config.TrainingConfig.BUFFER_SIZE  # 100000
+        self.min_buffer_size = tetris_config.TrainingConfig.MIN_BUFFER_SIZE  # 1000
         
-        # Logging and saving
-        self.log_dir = 'logs/unified_training'
-        self.checkpoint_dir = 'checkpoints/unified'
-        self.save_interval = 10
+        # Logging and saving - use centralized config
+        self.log_dir = tetris_config.LoggingConfig.LOG_DIR  # 'logs/unified_training'
+        self.checkpoint_dir = tetris_config.LoggingConfig.CHECKPOINT_DIR  # 'checkpoints/unified'
+        self.save_interval = tetris_config.LoggingConfig.SAVE_INTERVAL  # 10
         self.visualize = False  # Default to no visualization
 
 def main():
     parser = argparse.ArgumentParser(description="Unified Tetris RL Training")
-    parser.add_argument('--num_batches', type=int, default=100, help='Number of training batches')
+    parser.add_argument('--num_batches', type=int, default=50, help='Number of training batches (50 * 20 episodes = 1000 total)')
     parser.add_argument('--visualize', action='store_true', help='Visualize training')
     parser.add_argument('--log_dir', type=str, default='logs/unified_training', help='Log directory')
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints/unified', help='Checkpoint directory')

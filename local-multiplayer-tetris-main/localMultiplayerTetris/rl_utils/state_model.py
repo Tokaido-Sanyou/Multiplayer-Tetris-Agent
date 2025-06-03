@@ -157,3 +157,73 @@ class StateModel(nn.Module):
             'all_x_position_losses': x_losses,
             'all_value_losses': value_losses
         }
+
+    def get_optimal_placement(self, state):
+        """
+        Get the optimal placement directly from the model predictions
+        Returns:
+            optimal_placement: Dict with 'rotation', 'x_position', 'y_position', and 'confidence'
+        """
+        with torch.no_grad():
+            rot_logits, x_logits, y_logits, value = self.forward(state)
+            
+            # Get the most likely placement
+            optimal_rotation = torch.argmax(rot_logits, dim=1)
+            optimal_x = torch.argmax(x_logits, dim=1)
+            optimal_y = torch.argmax(y_logits, dim=1)
+            
+            # Calculate confidence scores (softmax probabilities)
+            rot_probs = F.softmax(rot_logits, dim=1)
+            x_probs = F.softmax(x_logits, dim=1)
+            y_probs = F.softmax(y_logits, dim=1)
+            
+            # Get confidence for the optimal placement
+            batch_indices = torch.arange(rot_logits.shape[0])
+            rot_confidence = rot_probs[batch_indices, optimal_rotation]
+            x_confidence = x_probs[batch_indices, optimal_x]
+            y_confidence = y_probs[batch_indices, optimal_y]
+            
+            # Overall confidence is the product of individual confidences
+            overall_confidence = rot_confidence * x_confidence * y_confidence
+            
+            return {
+                'rotation': optimal_rotation,
+                'x_position': optimal_x,
+                'y_position': optimal_y,
+                'value': value.squeeze(-1),
+                'confidence': overall_confidence
+            }
+
+    def get_placement_goal_vector(self, state):
+        """
+        Get optimal placement as a vector that can be used as goal for the actor
+        Returns:
+            goal_vector: Tensor of shape (batch_size, goal_dim) encoding the optimal placement
+        """
+        optimal_placement = self.get_optimal_placement(state)
+        
+        batch_size = state.shape[0]
+        device = state.device
+        
+        # Encode placement as a concatenated vector
+        # [rotation_one_hot(4) + x_position_one_hot(10) + y_position_one_hot(20) + value(1) + confidence(1)]
+        goal_dim = 4 + 10 + 20 + 1 + 1  # 36 total
+        goal_vector = torch.zeros(batch_size, goal_dim, device=device)
+        
+        # One-hot encode rotation (indices 0-3)
+        rot_indices = optimal_placement['rotation']
+        goal_vector[torch.arange(batch_size), rot_indices] = 1.0
+        
+        # One-hot encode x position (indices 4-13)
+        x_indices = optimal_placement['x_position'] + 4
+        goal_vector[torch.arange(batch_size), x_indices] = 1.0
+        
+        # One-hot encode y position (indices 14-33)  
+        y_indices = optimal_placement['y_position'] + 14
+        goal_vector[torch.arange(batch_size), y_indices] = 1.0
+        
+        # Add value and confidence (indices 34-35)
+        goal_vector[:, 34] = optimal_placement['value']
+        goal_vector[:, 35] = optimal_placement['confidence']
+        
+        return goal_vector
