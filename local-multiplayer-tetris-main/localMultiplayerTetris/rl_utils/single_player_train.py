@@ -5,6 +5,7 @@ import logging
 from ..tetris_env import TetrisEnv
 from .actor_critic import ActorCriticAgent
 from .train import preprocess_state, evaluate_agent
+from .vector_train import train_vectorized  # vectorized parallel training
 import pygame
 import cProfile
 import pstats
@@ -277,6 +278,8 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--vector', action='store_true', help='Use vectorized parallel environments')
+    parser.add_argument('--num-envs', type=int, default=4, help='Number of parallel environments when using --vector')
     parser.add_argument('--eval', action='store_true', help='Run evaluation only (no training, no exploration, no gradients)')
     parser.add_argument('--visualize', action='store_true', help='Enable GUI visualization')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint file to load')
@@ -292,7 +295,18 @@ if __name__ == '__main__':
     if profiler:
         profiler.enable()
     try:
-        if args.eval:
+        if args.vector:
+            # --- Vectorized multi-environment training ---
+            train_vectorized(
+                num_envs=args.num_envs,
+                num_episodes=args.episodes,
+                save_interval=args.save_interval,
+                eval_interval=args.eval_interval,
+                checkpoint=args.checkpoint,
+                no_eval=args.no_eval,
+                headless_eval=not args.visualize  # render only if visualize requested
+            )
+        elif args.eval:
             # Evaluation-only mode: no training, no exploration, no gradients
             from .train import preprocess_state
             env = TetrisEnv(single_player=True, headless=not args.visualize)
