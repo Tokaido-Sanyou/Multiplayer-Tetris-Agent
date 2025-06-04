@@ -14,17 +14,17 @@ class SharedFeatureExtractor(nn.Module):
 
         # CNN for grid processing without pooling (preserving 20x10 resolution)
         self.grid_conv = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, padding=1),  # 1->8, keeps 20x10
+            nn.Conv2d(1, 2, kernel_size=3, padding=1),  # 1->2, keeps 20x10
             nn.ReLU(),
-            nn.Conv2d(8, 8, kernel_size=3, padding=1),  # 8->8, keeps 20x10 (reduced)
+            nn.Conv2d(2, 2, kernel_size=3, padding=1),  # 2->2, keeps 20x10 (reduced)
             nn.ReLU()
         )
 
         # MLP for piece metadata: next, hold, current_shape, rotation, x, y, can_hold
         self.piece_embed = nn.Sequential(
-            nn.Linear(7, 32),  # 7 metadata scalars
+            nn.Linear(7, 16),  # 7 metadata scalars
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(16, 16),
             nn.ReLU()
         )
 
@@ -75,30 +75,22 @@ class ActorCritic(nn.Module):
         self.feature_extractor = SharedFeatureExtractor()
         
         # Actor network (policy)
-        # Feature dimension: grid conv output (8×20×10 = 1600) + piece embed (32)
-        self.feature_dim = 1600 + 32
+        # Feature dimension: grid conv output (4×20×10 = 800) + piece embed (16)
+        self.feature_dim = 400 + 16
         self.actor = nn.Sequential(
-            nn.Linear(self.feature_dim, 512),
+            nn.Linear(self.feature_dim, 128),
             nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Linear(256, 64),
-            nn.ReLU(),
-            nn.Linear(64, output_dim),
+            nn.Linear(128, output_dim),
             nn.Softmax(dim=-1)
         )
         self.critic = nn.Sequential(
-            nn.Linear(self.feature_dim, 512),
+            nn.Linear(self.feature_dim, 128),
             nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Linear(256, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(128, 1)
         )
     
     def forward(self, x):
