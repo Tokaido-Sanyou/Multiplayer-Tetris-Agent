@@ -108,7 +108,7 @@ class ActorCritic(nn.Module):
             nn.ReLU(),
             nn.Linear(self.net_config.CRITIC_HIDDEN_LAYERS[1], self.net_config.CRITIC_OUTPUT_DIM)
         )
-        
+    
         # NEW: Future state prediction head
         self.future_state_predictor = nn.Sequential(
             nn.Linear(combined_feat_dim, self.net_config.CRITIC_HIDDEN_LAYERS[0]),
@@ -152,7 +152,7 @@ class ActorCritic(nn.Module):
             future_state = self.future_state_predictor(combined_feat)
             return action_probs, state_value, future_state
         else:
-            return action_probs, state_value
+        return action_probs, state_value
 
 class ActorCriticAgent:
     """

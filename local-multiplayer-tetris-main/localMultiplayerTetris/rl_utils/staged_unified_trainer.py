@@ -20,6 +20,16 @@ import argparse # Ensure argparse is imported
 import os # Ensure os is imported
 import logging # Ensure logging is imported
 
+# Import enhanced components at the top
+try:
+    from .enhanced_6phase_state_model import Enhanced6PhaseComponents
+    ENHANCED_COMPONENTS_AVAILABLE = True
+    print("🚀 Enhanced 6-Phase Components loaded successfully!")
+except ImportError as e:
+    print(f"⚠️ Enhanced components not available: {e}")
+    print("📝 Will use original components as fallback")
+    ENHANCED_COMPONENTS_AVAILABLE = False
+
 # Handle both direct execution and module import
 try:
     from ..config import TetrisConfig
@@ -39,26 +49,51 @@ except ImportError:
 
 class StagedTrainingSchedule:
     """
-    Enhanced training schedule with state model pretraining
+    Enhanced training schedule with PROPORTIONAL staging support
     Prevents moving target problem by training state model first, then actor
     """
-    def __init__(self, total_batches=300):
+    def __init__(self, total_batches=300, stage_proportions=None):
         self.total_batches = total_batches
         
-        # Stage 1: State Model Pretraining (batches 0-149)
-        self.state_model_pretraining_batches = total_batches // 2  # 150 batches
+        # ENHANCED: Proportional staging support (default to original behavior)
+        if stage_proportions is None:
+            stage_proportions = {
+                'state_model_pretraining': 0.5,    # 50% for state model pretraining
+                'actor_training': 0.33,            # 33% for actor training
+                'joint_finetuning': 0.17           # 17% for joint fine-tuning
+            }
         
-        # Stage 2: Actor Training with Frozen Goals (batches 150-249) 
-        self.actor_training_batches = total_batches - self.state_model_pretraining_batches  # 150 batches
+        # Validate proportions
+        total_proportion = sum(stage_proportions.values())
+        if abs(total_proportion - 1.0) > 0.01:
+            print(f"⚠️ Warning: Stage proportions sum to {total_proportion:.3f}, normalizing...")
+            # Normalize proportions
+            for key in stage_proportions:
+                stage_proportions[key] /= total_proportion
         
-        # Stage 3: Joint Fine-tuning (last 50 batches)
-        self.joint_finetuning_batches = 50
+        self.stage_proportions = stage_proportions
+        
+        # Calculate batch boundaries based on proportions
+        self.state_model_pretraining_batches = int(total_batches * stage_proportions['state_model_pretraining'])
+        self.actor_training_batches = int(total_batches * stage_proportions['actor_training'])
+        self.joint_finetuning_batches = int(total_batches * stage_proportions['joint_finetuning'])
+        
+        # Ensure all batches are accounted for
+        assigned_batches = self.state_model_pretraining_batches + self.actor_training_batches + self.joint_finetuning_batches
+        if assigned_batches < total_batches:
+            # Add remaining batches to joint fine-tuning
+            self.joint_finetuning_batches += (total_batches - assigned_batches)
+        
+        print(f"🎯 PROPORTIONAL STAGING CONFIGURED:")
+        print(f"   • State Model Pretraining: {stage_proportions['state_model_pretraining']*100:.1f}% ({self.state_model_pretraining_batches} batches)")
+        print(f"   • Actor Training: {stage_proportions['actor_training']*100:.1f}% ({self.actor_training_batches} batches)")
+        print(f"   • Joint Fine-tuning: {stage_proportions['joint_finetuning']*100:.1f}% ({self.joint_finetuning_batches} batches)")
     
     def get_training_stage(self, batch):
         """Determine which training stage we're in"""
         if batch < self.state_model_pretraining_batches:
             return "state_model_pretraining"
-        elif batch < self.total_batches - self.joint_finetuning_batches:
+        elif batch < self.state_model_pretraining_batches + self.actor_training_batches:
             return "actor_training_frozen_goals"
         else:
             return "joint_finetuning"
@@ -114,17 +149,60 @@ class StagedUnifiedTrainer(UnifiedTrainer):
         # Initialize base trainer
         super().__init__(config)
         
-        # CRITICAL ENHANCEMENT: Initialize staged training schedule
-        self.staged_training = StagedTrainingSchedule(total_batches=config.num_batches)
+        # ENHANCED: Support for proportional staging
+        stage_proportions = getattr(config, 'stage_proportions', None)
+        if stage_proportions:
+            print(f"🎯 Using CUSTOM staging proportions: {stage_proportions}")
+        else:
+            print(f"🎯 Using DEFAULT staging proportions (50% state, 33% actor, 17% joint)")
+        
+        # CRITICAL ENHANCEMENT: Initialize staged training schedule with proportional support
+        self.staged_training = StagedTrainingSchedule(
+            total_batches=config.num_batches,
+            stage_proportions=stage_proportions
+        )
         
         # NEW: Track state model loss history for adaptive training
         self.state_model_batch_loss_history = []  # Track min loss from each batch
         
         print(f"\n🎯 STAGED TRAINING ENABLED:")
         print(f"   • Stage 1: State Model Pretraining (Batches 0-{self.staged_training.state_model_pretraining_batches-1})")
-        print(f"   • Stage 2: Actor Training + Frozen Goals (Batches {self.staged_training.state_model_pretraining_batches}-{config.num_batches - self.staged_training.joint_finetuning_batches-1})")
-        print(f"   • Stage 3: Joint Fine-tuning (Batches {config.num_batches - self.staged_training.joint_finetuning_batches}-{config.num_batches-1})")
+        print(f"   • Stage 2: Actor Training + Frozen Goals (Batches {self.staged_training.state_model_pretraining_batches}-{self.staged_training.state_model_pretraining_batches + self.staged_training.actor_training_batches-1})")
+        print(f"   • Stage 3: Joint Fine-tuning (Batches {self.staged_training.state_model_pretraining_batches + self.staged_training.actor_training_batches}-{config.num_batches-1})")
         print(f"   🔥 BENEFIT: Prevents moving target problem - stable goals for actor!")
+        
+        # ENHANCED: Initialize enhanced components if available
+        if ENHANCED_COMPONENTS_AVAILABLE:
+            print("🚀 Using ENHANCED 6-Phase Components:")
+            print("   • Top 5 terminal state model")
+            print("   • Separate Q-learning for terminal rewards")
+            print("   • Complete goal/game reward separation")
+            print("   • Trajectory consistency and board continuity")
+            print("   • Flexible placement support (ANY position on board)")
+            
+            self.enhanced_components = Enhanced6PhaseComponents(
+                state_dim=self.tetris_config.STATE_DIM,
+                device=self.device
+            )
+            
+            # Set optimizers for enhanced components
+            self.enhanced_components.set_optimizers(
+                state_lr=config.state_lr,
+                q_lr=config.reward_lr
+            )
+            
+            # Use enhanced state model
+            self.state_model = self.enhanced_components.state_model
+            self.state_optimizer = self.enhanced_components.state_optimizer
+            
+            # Enhanced flag
+            self.use_enhanced = True
+        else:
+            # Fallback to original components
+            print("📝 Using original components (enhanced not available)")
+            self.state_model = StateModel(state_dim=self.tetris_config.STATE_DIM).to(self.device)
+            self.state_optimizer = torch.optim.Adam(self.state_model.parameters(), lr=config.state_lr)
+            self.use_enhanced = False
     
     def run_training(self):
         """
@@ -153,120 +231,48 @@ class StagedUnifiedTrainer(UnifiedTrainer):
             # Phase 1: Exploration data collection (always runs)
             self.phase_1_exploration(batch)
             
-            # Phase 2: State model learning (STAGED)
+            # Phase 2: State Model Learning
             if should_train_state_model:
-                print(f"🧠 Phase 2: State Model Learning (Stage: {stage})")
-                
-                # Get previous batch minimum loss for adaptive training
-                previous_batch_min_loss = float('inf')
-                if len(self.state_model_batch_loss_history) > 0:
-                    previous_batch_min_loss = self.state_model_batch_loss_history[-1]
-                
-                # NEW: Adaptive training with data reuse instead of extended epochs
-                max_training_attempts = 5  # Maximum number of complete training calls
-                loss_improvement_threshold = self.tetris_config.TrainingConfig.STATE_MODEL_LOSS_IMPROVEMENT_THRESHOLD
-                target_loss = previous_batch_min_loss * loss_improvement_threshold if previous_batch_min_loss != float('inf') else float('inf')
-                
-                batch_min_loss = float('inf')
-                training_attempts = 0
-                
-                print(f"   🎯 Adaptive training target: {target_loss:.4f} (previous: {previous_batch_min_loss if previous_batch_min_loss != float('inf') else 'N/A'})")
-                
-                # First training attempt (always runs)
-                training_attempts += 1
-                print(f"   📚 Training attempt {training_attempts}/{max_training_attempts}")
-                state_results = self.phase_2_state_learning(batch)  # Use normal 3-epoch training
-                current_min_loss = state_results.get('current_min_loss', float('inf'))
-                batch_min_loss = min(batch_min_loss, current_min_loss)
-                
-                # Continue training if loss condition not met and we're not in the first batch
-                while (training_attempts < max_training_attempts and 
-                       previous_batch_min_loss != float('inf') and 
-                       batch_min_loss >= target_loss):
-                    
-                    training_attempts += 1
-                    print(f"   🔄 Loss condition not met ({batch_min_loss:.4f} >= {target_loss:.4f}). Training attempt {training_attempts}/{max_training_attempts} (reusing data)")
-                    
-                    extra_results = self.phase_2_state_learning(batch)  # Reuse same data with normal epochs
-                    extra_min_loss = extra_results.get('current_min_loss', float('inf'))
-                    if extra_min_loss < batch_min_loss:
-                        batch_min_loss = extra_min_loss
-                        print(f"   ✅ Improved loss: {batch_min_loss:.4f}")
-                    else:
-                        print(f"   ⚠️ No improvement: {extra_min_loss:.4f}")
-                
-                # INTENSIVE state model training during pretraining stage (additional to adaptive training)
-                if stage == "state_model_pretraining":
-                    for extra_epoch in range(intensity['state_model_extra_epochs']):
-                        print(f"   🔄 Extra pretraining call {extra_epoch+1}/{intensity['state_model_extra_epochs']} (stage-specific)")
-                        extra_results = self.phase_2_state_learning(batch, extra_training=True)
-                        
-                        # Update batch minimum loss if this extra training achieved better loss
-                        extra_min_loss = extra_results.get('current_min_loss', float('inf'))
-                        if extra_min_loss < batch_min_loss:
-                            batch_min_loss = extra_min_loss
-                
-                # Store the best loss achieved in this batch (across all calls)
-                self.state_model_batch_loss_history.append(batch_min_loss)
-                
-                # Enhanced summary
-                loss_improvement_achieved = (previous_batch_min_loss - batch_min_loss) / previous_batch_min_loss if previous_batch_min_loss != float('inf') and previous_batch_min_loss > 0 else 0
-                condition_met = batch_min_loss < target_loss if target_loss != float('inf') else "N/A (first batch)"
-                
-                print(f"   📊 Batch {batch+1} State Model Summary:")
-                print(f"       • Min Loss: {batch_min_loss:.4f} (Previous: {previous_batch_min_loss if previous_batch_min_loss != float('inf') else 'N/A'})")
-                print(f"       • Training Attempts: {training_attempts}/{max_training_attempts}")
-                print(f"       • Loss Improvement: {loss_improvement_achieved*100:.1f}%")
-                print(f"       • Target Condition: {'✅ MET' if condition_met is True else '❌ NOT MET' if condition_met is False else condition_met}")
-                
+                self.phase_2_state_learning_with_adaptive_target(batch)
             else:
-                print(f"🧠 Phase 2: State Model Learning (SKIPPED - goals frozen for actor training)")
-                # If state model training is skipped, repeat the last loss value
-                if len(self.state_model_batch_loss_history) > 0:
-                    self.state_model_batch_loss_history.append(self.state_model_batch_loss_history[-1])
-                else:
-                    self.state_model_batch_loss_history.append(float('inf'))
+                print(f"🧠 Phase 2: State Model Learning (SKIPPED - goals frozen)")
             
-            # Phase 3: Future reward prediction (always runs but with staged intensity)
-            self.phase_3_reward_prediction(batch)
+            # Phase 2.5: Multi-Step Q-Learning (CORRECTED - with episode structure)
+            if self.use_enhanced:
+                self.phase_2_5_terminal_q_learning(batch)
             
-            # Phase 4: Actor exploitation (STAGED)
+            # Phase 3: Future Reward Predictor Training (now optional with Q-learning)
+            if not self.use_enhanced:
+                self.phase_3_future_reward_predictor(batch)
+            else:
+                print(f"🔮 Phase 3: Future Reward Predictor (SKIPPED - using Multi-step Q-learning instead)")
+            
+            # Phase 4: Actor Exploitation
             if should_train_actor:
-                print(f"🎭 Phase 4: Actor Exploitation (Stage: {stage})")
-                # Pass gradient mode to control goal corruption
-                self.phase_4_exploitation_staged(batch, goal_gradient_mode=goal_gradient_mode)
-                
-                # INTENSIVE actor training during actor-focused stage
-                if stage == "actor_training_frozen_goals":
-                    for extra_epoch in range(intensity['actor_extra_epochs']):
-                        print(f"   🔄 Extra actor epoch {extra_epoch+1}/{intensity['actor_extra_epochs']}")
-                        self.phase_4_exploitation_staged(batch, goal_gradient_mode=goal_gradient_mode, extra_training=True)
+                self.phase_4_actor_exploitation(batch, goal_gradient_mode)
             else:
                 print(f"🎭 Phase 4: Actor Exploitation (SKIPPED - pretraining state model first)")
             
-            # Phase 5: PPO training (only during actor stages)
+            # Phase 5: PPO Training
             if should_train_actor:
-                self.phase_5_ppo_training_staged(batch, goal_gradient_mode=goal_gradient_mode)
+                self.phase_5_ppo_training(batch, goal_gradient_mode)
             else:
                 print(f"🚀 Phase 5: PPO Training (SKIPPED - pretraining state model first)")
             
-            # Phase 6: Model evaluation (CONDITIONAL based on stage and frequency)
+            # Phase 6: Model evaluation (ENHANCED with line clearing test)
             should_evaluate_this_stage = self.staged_training.should_run_evaluation(batch)
             is_evaluation_batch = (batch + 1) % self.tetris_config.AlgorithmConfig.EVALUATION_FREQUENCY == 0
 
             if should_evaluate_this_stage and is_evaluation_batch:
-                print(f"📊 Phase 6: Model Evaluation (Stage: {stage.upper()}, Batch {batch+1})")
-                # The base phase_6_evaluation method logs details internally
-                eval_results = self.phase_6_evaluation(batch)
-                if eval_results: # Assuming phase_6_evaluation returns a dict of metrics
+                print(f"📊 Phase 6: Enhanced Model Evaluation (Stage: {stage.upper()}, Batch {batch+1})")
+                eval_results = self.phase_6_evaluation_with_line_clearing_test(batch)
+                if eval_results:
                     for key, value in eval_results.items():
-                        if isinstance(value, (int, float)): # Log numerical metrics
+                        if isinstance(value, (int, float)):
                             self.writer.add_scalar(f"Evaluation_Staged/{key}", value, batch)
-                        # else: # Handle other types of results if necessary, e.g., arrays for histograms
-                        #    pass 
             elif not should_evaluate_this_stage:
                 print(f"📊 Phase 6: Model Evaluation (SKIPPED - Stage: {stage.upper()} - Evaluation not active for this stage)")
-            else: # should_evaluate_this_stage is True, but not an evaluation frequency batch
+            else:
                 print(f"📊 Phase 6: Model Evaluation (SKIPPED - Stage: {stage.upper()}, Batch {batch+1} - Not an evaluation batch as per EVALUATION_FREQUENCY={self.tetris_config.AlgorithmConfig.EVALUATION_FREQUENCY})")
 
             # STAGING TRANSITION MESSAGES
@@ -286,25 +292,176 @@ class StagedUnifiedTrainer(UnifiedTrainer):
         print(f"🎯 Result: Goal-consistent actor with stable state model guidance")
         self.writer.close()
     
-    def phase_4_exploitation_staged(self, batch, goal_gradient_mode="full_gradients", extra_training=False):
+    def phase_1_exploration(self, batch):
         """
-        Enhanced Phase 4 with gradient control for staged training
+        Phase 1: REDESIGNED Piece-by-Piece Exploration with proper board progression
         """
-        print(f"🎮 Phase 4: Enhanced Multi-Attempt Goal-Focused Policy Exploitation (Staged)")
+        print(f"🔍 Phase 1: Piece-by-Piece Exploration (Batch {batch+1})")
         
-        # Control gradient flow based on training stage
+        if self.use_enhanced:
+            # REDESIGNED: Use piece-by-piece exploration manager
+            exploration_manager = self.enhanced_components.create_piece_by_piece_exploration_manager(self.env)
+            
+            # Determine exploration mode
+            exploration_mode = getattr(self.config, 'exploration_mode', 'rnd')
+            
+            # Collect piece-by-piece exploration data with proper board progression
+            print(f"   🎯 Mode: {exploration_mode.upper()} with 200 trials per piece")
+            exploration_data = exploration_manager.collect_piece_by_piece_exploration_data(exploration_mode)
+            
+            print(f"   📊 Piece-by-Piece Exploration Results:")
+            print(f"       • Total exploration data points: {len(exploration_data)}")
+            print(f"       • Total lines cleared: {sum(d.get('lines_cleared', 0) for d in exploration_data)}")
+            print(f"       • Line clearing rate: {sum(1 for d in exploration_data if d.get('lines_cleared', 0) > 0) / len(exploration_data) * 100:.1f}%")
+            print(f"       • Average reward per trial: {np.mean([d['terminal_reward'] for d in exploration_data]):.2f}")
+            print(f"       • Pieces placed: {len(exploration_manager.piece_sequence)}")
+            
+            # Trajectory lineage verification
+            lineage_lengths = [len(d.get('trajectory_lineage', [])) for d in exploration_data]
+            if lineage_lengths:
+                print(f"       • Trajectory lineage verified: avg {np.mean(lineage_lengths):.1f} steps, max {max(lineage_lengths)} steps")
+            
+            self.exploration_data = exploration_data
+            
+            # Update batch stats with enhanced lineage info
+            self.update_batch_stats('exploration', {
+                'total_data_points': len(exploration_data),
+                'lines_cleared': sum(d.get('lines_cleared', 0) for d in exploration_data),
+                'line_clearing_rate': sum(1 for d in exploration_data if d.get('lines_cleared', 0) > 0) / len(exploration_data),
+                'pieces_placed': len(exploration_manager.piece_sequence),
+                'avg_trajectory_lineage': np.mean(lineage_lengths) if lineage_lengths else 0,
+                'max_trajectory_lineage': max(lineage_lengths) if lineage_lengths else 0,
+                'exploration_type': 'piece_by_piece_progression',
+                'exploration_mode': exploration_mode,
+                'trials_per_piece': exploration_manager.trials_per_piece,
+                'boards_kept_per_generation': exploration_manager.boards_to_keep
+            })
+            
+        else:
+            # Fallback to original exploration methods
+            exploration_mode = getattr(self.config, 'exploration_mode', 'rnd')
+            
+            if exploration_mode == 'rnd':
+                self.exploration_data = self.exploration_actor.collect_placement_data(self.config.exploration_episodes)
+            elif exploration_mode == 'deterministic':
+                self.exploration_data = self.deterministic_explorer.generate_all_terminal_states()
+            elif exploration_mode == 'random':
+                self.exploration_data = self.random_explorer.collect_random_placement_data(self.config.exploration_episodes)
+            else:
+                print(f"⚠️ Unknown exploration mode: {exploration_mode}, using RND")
+                self.exploration_data = self.exploration_actor.collect_placement_data(self.config.exploration_episodes)
+            
+            print(f"   📊 {exploration_mode.upper()} Exploration Results:")
+            print(f"       • Total placements: {len(self.exploration_data)}")
+            if self.exploration_data:
+                rewards = [d['terminal_reward'] for d in self.exploration_data]
+                print(f"       • Average terminal reward: {np.mean(rewards):.2f}")
+                print(f"       • Reward range: {np.min(rewards):.1f} to {np.max(rewards):.1f}")
+            
+            # Update batch stats
+            self.update_batch_stats('exploration', {
+                'total_placements': len(self.exploration_data),
+                'exploration_mode': exploration_mode,
+                'exploration_type': 'traditional_terminal_states'
+            })
+    
+    def phase_4_actor_exploitation(self, batch, goal_gradient_mode="full_gradients"):
+        """
+        Enhanced Phase 4: Actor Exploitation with enhanced goals
+        """
         freeze_goals = (goal_gradient_mode == "stop_gradients")
         
-        if freeze_goals:
-            print(f"   🔒 Goals FROZEN - Actor cannot corrupt state model")
-        else:
-            print(f"   🔓 Goals FREE - Joint optimization enabled")
+        print(f"🎭 Phase 4: Actor Exploitation (Batch {batch+1})")
+        print(f"   🔒 Goal gradients: {'FROZEN' if freeze_goals else 'FREE'}")
+        print(f"   🎯 Using: {'Enhanced Top-5 Goals' if self.use_enhanced else 'Original Goals'}")
         
-        # Call the base exploitation method (note: base method doesn't support freeze_goals)
-        # The goal gradient control will be handled in the actor-critic level during PPO training
-        self.phase_4_exploitation(batch)
+        if len(self.experience_buffer) < self.tetris_config.TrainingConfig.MIN_BUFFER_SIZE:
+            print("   ⚠️ Insufficient experience for actor training")
+            return
+        
+        total_reward = 0
+        successful_episodes = 0
+        
+        for episode in range(self.config.exploitation_episodes):
+            self.env.reset()
+            episode_reward = 0
+            episode_steps = 0
+            
+            while not self.env.game_over and episode_steps < self.config.max_episode_steps:
+                # Get current state
+                obs = self.env._get_observation()
+                if self.use_enhanced:
+                    state = self.enhanced_components.obs_to_state_vector(obs)
+                else:
+                    state = self.exploration_actor._obs_to_state_vector(obs)
+                state_tensor = torch.FloatTensor(state).to(self.device)
+                
+                # Get goal from state model (enhanced or original)
+                if self.use_enhanced:
+                    goal = self.enhanced_components.get_goal_for_actor(state_tensor)
+                    if goal is None:
+                        # Fallback to zero goal
+                        goal = torch.zeros(1, 36, device=self.device)
+                else:
+                    # Original goal generation
+                    with torch.no_grad():
+                        rot_logits, x_logits, y_logits, value_pred = self.state_model(state_tensor.unsqueeze(0))
+                        goal = torch.cat([
+                            F.softmax(rot_logits, dim=1),
+                            F.softmax(x_logits, dim=1),
+                            F.softmax(y_logits, dim=1),
+                            torch.zeros(1, 2, device=self.device)  # Padding for 36D
+                        ], dim=1)
+                
+                if freeze_goals:
+                    goal = goal.detach()
+                
+                # Get action from actor
+                combined_input = torch.cat([state_tensor.unsqueeze(0), goal], dim=1)
+                action_probs = self.actor(combined_input)
+                
+                # Sample action
+                action_dist = torch.distributions.Categorical(action_probs)
+                action = action_dist.sample()
+                
+                # Execute action
+                reward, done = self.env.step(action.item())
+                new_obs = self.env._get_observation()
+                if self.use_enhanced:
+                    new_state = self.enhanced_components.obs_to_state_vector(new_obs)
+                else:
+                    new_state = self.exploration_actor._obs_to_state_vector(new_obs)
+                
+                # Store experience
+                self.experience_buffer.push(state, action.item(), reward, new_state, done)
+                
+                episode_reward += reward
+                episode_steps += 1
+                
+                if done:
+                    break
+            
+            total_reward += episode_reward
+            if episode_reward > 0:
+                successful_episodes += 1
+        
+        avg_reward = total_reward / self.config.exploitation_episodes
+        success_rate = successful_episodes / self.config.exploitation_episodes
+        
+        print(f"   📊 Actor Results:")
+        print(f"       • Average reward: {avg_reward:.2f}")
+        print(f"       • Success rate: {success_rate*100:.1f}%")
+        print(f"       • Successful episodes: {successful_episodes}/{self.config.exploitation_episodes}")
+        
+        # Store stats
+        self.update_batch_stats('actor_exploitation', {
+            'avg_reward': avg_reward,
+            'success_rate': success_rate,
+            'successful_episodes': successful_episodes,
+            'goal_type': 'enhanced_top5' if self.use_enhanced else 'original'
+        })
     
-    def phase_5_ppo_training_staged(self, batch, goal_gradient_mode="full_gradients"):
+    def phase_5_ppo_training(self, batch, goal_gradient_mode="full_gradients"):
         """
         Enhanced Phase 5 with gradient control for staged training
         """
@@ -533,7 +690,8 @@ class StagedUnifiedTrainer(UnifiedTrainer):
                 'exploitation': {},
                 'ppo': {},
                 'evaluation': {},
-                'rnd': {}
+                'rnd': {},
+                'line_clearing_test': {}
             }
         
         if phase_name in self.batch_stats:
@@ -541,48 +699,351 @@ class StagedUnifiedTrainer(UnifiedTrainer):
         else:
             self.batch_stats[phase_name] = stats_dict.copy()
 
+    def phase_2_state_learning_with_adaptive_target(self, batch):
+        """
+        Phase 2: Enhanced State Model Learning with adaptive training target
+        """
+        stage = self.staged_training.get_training_stage(batch)
+        intensity = self.staged_training.get_training_intensity(batch)
+        
+        print(f"🧠 Phase 2: State Model Learning (Stage: {stage})")
+        
+        # Get previous batch minimum loss for adaptive training
+        previous_batch_min_loss = float('inf')
+        if len(self.state_model_batch_loss_history) > 0:
+            previous_batch_min_loss = self.state_model_batch_loss_history[-1]
+        
+        # Adaptive training with data reuse
+        max_training_attempts = 5
+        loss_improvement_threshold = self.tetris_config.TrainingConfig.STATE_MODEL_LOSS_IMPROVEMENT_THRESHOLD
+        target_loss = previous_batch_min_loss * loss_improvement_threshold if previous_batch_min_loss != float('inf') else float('inf')
+        
+        batch_min_loss = float('inf')
+        training_attempts = 0
+        
+        print(f"   🎯 Adaptive training target: {target_loss:.4f} (previous: {previous_batch_min_loss if previous_batch_min_loss != float('inf') else 'N/A'})")
+        
+        # First training attempt
+        training_attempts += 1
+        print(f"   📚 Training attempt {training_attempts}/{max_training_attempts}")
+        state_results = self.phase_2_state_learning(batch)
+        current_min_loss = state_results.get('loss', float('inf'))
+        batch_min_loss = min(batch_min_loss, current_min_loss)
+        
+        # Continue training if loss condition not met
+        while (training_attempts < max_training_attempts and 
+               previous_batch_min_loss != float('inf') and 
+               batch_min_loss >= target_loss):
+            
+            training_attempts += 1
+            print(f"   ⚠️ Loss condition not met ({batch_min_loss:.4f} >= {target_loss:.4f}). Training attempt {training_attempts}/{max_training_attempts} (reusing data)")
+            
+            extra_results = self.phase_2_state_learning(batch)
+            extra_min_loss = extra_results.get('loss', float('inf'))
+            if extra_min_loss < batch_min_loss:
+                batch_min_loss = extra_min_loss
+                print(f"   ✅ Improved loss: {batch_min_loss:.4f}")
+            else:
+                print(f"   ⚠️ No improvement: {extra_min_loss:.4f}")
+        
+        # Intensive state model training during pretraining stage
+        if stage == "state_model_pretraining":
+            for extra_epoch in range(intensity['state_model_extra_epochs']):
+                print(f"   🔄 Extra pretraining call {extra_epoch+1}/{intensity['state_model_extra_epochs']} (stage-specific)")
+                extra_results = self.phase_2_state_learning(batch)
+                
+                extra_min_loss = extra_results.get('loss', float('inf'))
+                if extra_min_loss < batch_min_loss:
+                    batch_min_loss = extra_min_loss
+        
+        # Store the best loss achieved
+        self.state_model_batch_loss_history.append(batch_min_loss)
+        
+        # Enhanced summary
+        loss_improvement_achieved = (previous_batch_min_loss - batch_min_loss) / previous_batch_min_loss if previous_batch_min_loss != float('inf') and previous_batch_min_loss > 0 else 0
+        condition_met = batch_min_loss < target_loss if target_loss != float('inf') else "N/A (first batch)"
+        
+        print(f"   📊 Batch {batch+1} State Model Summary:")
+        print(f"       • Min Loss: {batch_min_loss:.4f} (Previous: {previous_batch_min_loss if previous_batch_min_loss != float('inf') else 'N/A'})")
+        print(f"       • Training Attempts: {training_attempts}/{max_training_attempts}")
+        print(f"       • Loss Improvement: {loss_improvement_achieved*100:.1f}%")
+        print(f"       • Target Condition: {'✅ MET' if condition_met is True else '❌ NOT MET' if condition_met is False else condition_met}")
+        print(f"       • Model Type: {'Enhanced Top-5' if self.use_enhanced else 'Original'}")
+    
+    def phase_2_state_learning(self, batch):
+        """
+        Phase 2: Enhanced State Model Learning (top 5 terminal states)
+        """
+        print(f"🧠 Phase 2: State Model Learning (Batch {batch+1})")
+        
+        if not self.exploration_data:
+            print("   ⚠️ No exploration data for state model training.")
+            return {'loss': float('inf'), 'training_data_used': 0}
+        
+        if self.use_enhanced:
+            # Use enhanced top-5 terminal state model
+            print("   🏆 Using Enhanced Top-5 Terminal State Model")
+            return self.enhanced_components.train_enhanced_state_model(self.exploration_data)
+        else:
+            # Original state model training
+            print("   📚 Using Original State Model")
+            return self._train_original_state_model()
+    
+    def phase_2_5_terminal_q_learning(self, batch):
+        """
+        Phase 2.5: SIMPLIFIED Q-Learning (CORRECTED - no episode management)
+        Train Q-learning on continuous trajectory data for line clearing rewards
+        """
+        print(f"🎯 Phase 2.5: Simplified Q-Learning (Batch {batch+1})")
+        
+        if not self.use_enhanced:
+            print("   ⚠️ Enhanced components not available, skipping Q-learning")
+            return {'q_loss': 0, 'trajectories_trained': 0}
+        
+        if not self.exploration_data:
+            print("   ⚠️ No exploration data for Q-learning training.")
+            return {'q_loss': float('inf'), 'trajectories_trained': 0}
+        
+        # CORRECTED: Train simplified Q-learning on continuous trajectories (no episode management)
+        results = self.enhanced_components.train_simplified_q_learning(self.exploration_data)
+        
+        # CORRECTED: Print Q-learning loss and trajectory info per batch
+        q_loss = results.get('q_loss', float('inf'))
+        trajectories_trained = results.get('trajectories_trained', 0)
+        samples_processed = results.get('samples_processed', 0)
+        n_step = results.get('n_step', 4)
+        
+        print(f"   📊 Q-Learning Results:")
+        print(f"       • Q-Learning Loss: {q_loss:.4f}")
+        print(f"       • Trajectories Trained: {trajectories_trained}")
+        print(f"       • Samples Processed: {samples_processed}")
+        print(f"       • N-step Bootstrapping: {n_step}")
+        print(f"       • Lines Cleared Bonus: Integrated into reward calculation")
+        
+        # Log Q-learning metrics to TensorBoard
+        self.writer.add_scalar('QLearning/Loss', q_loss, batch)
+        self.writer.add_scalar('QLearning/TrajectoriesTrained', trajectories_trained, batch)
+        self.writer.add_scalar('QLearning/SamplesProcessed', samples_processed, batch)
+        
+        return results
+    
+    def phase_3_future_reward_predictor(self, batch):
+        """
+        Phase 3: Future Reward Predictor (fallback when enhanced not available)
+        """
+        print(f"🔮 Phase 3: Future Reward Predictor (Batch {batch+1})")
+        
+        if not self.exploration_data:
+            print("   ⚠️ No exploration data for future reward training.")
+            return
+        
+        # Original future reward predictor training
+        device = self.device
+        total_loss = 0
+        
+        for data in self.exploration_data:
+            state = torch.FloatTensor(data['state_vector']).unsqueeze(0).to(device)
+            reward = data['terminal_reward']
+            
+            predicted_reward = self.future_reward_predictor(state)
+            target_reward = torch.FloatTensor([[reward]]).to(device)
+            
+            loss = F.mse_loss(predicted_reward, target_reward)
+            
+            self.reward_optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.future_reward_predictor.parameters(), 1.0)
+            self.reward_optimizer.step()
+            
+            total_loss += loss.item()
+        
+        avg_loss = total_loss / len(self.exploration_data)
+        print(f"   📊 Future Reward Predictor Loss: {avg_loss:.4f}")
+
+    def _train_original_state_model(self):
+        """
+        Original state model training (fallback)
+        """
+        # Transform exploration data format
+        print("   🔄 Transforming exploration data format...")
+        training_data = []
+        
+        for data in self.exploration_data:
+            transformed_data = {
+                'state_vector': data['state_vector'],
+                'placement': data['placement'],
+                'terminal_reward': data['terminal_reward']
+            }
+            training_data.append(transformed_data)
+        
+        print(f"   ✅ Successfully transformed {len(training_data)} exploration data entries.")
+        
+        # Train original state model
+        device = self.device
+        total_loss = 0
+        epochs = 3
+        
+        print(f"   🔄 Training for {epochs} epochs (original model)")
+        
+        for epoch in range(epochs):
+            epoch_loss = 0
+            batches_processed = 0
+            
+            for data in training_data:
+                state = torch.FloatTensor(data['state_vector']).unsqueeze(0).to(device)
+                placement = data['placement']
+                reward = data['terminal_reward']
+                
+                # Forward pass
+                rot_logits, x_logits, y_logits, value_pred = self.state_model(state)
+                
+                # Targets
+                rot_target = torch.LongTensor([placement[0]]).to(device)
+                x_target = torch.LongTensor([placement[1]]).to(device)
+                y_target = torch.LongTensor([placement[2]]).to(device)
+                value_target = torch.FloatTensor([[reward]]).to(device)
+                
+                # Losses
+                rot_loss = F.cross_entropy(rot_logits, rot_target)
+                x_loss = F.cross_entropy(x_logits, x_target)
+                y_loss = F.cross_entropy(y_logits, y_target)
+                value_loss = F.mse_loss(value_pred, value_target)
+                
+                total_loss_batch = rot_loss + x_loss + y_loss + value_loss
+                
+                # Backpropagation
+                self.state_optimizer.zero_grad()
+                total_loss_batch.backward()
+                torch.nn.utils.clip_grad_norm_(self.state_model.parameters(), 1.0)
+                self.state_optimizer.step()
+                
+                epoch_loss += total_loss_batch.item()
+                batches_processed += 1
+            
+            avg_epoch_loss = epoch_loss / batches_processed if batches_processed > 0 else float('inf')
+            total_loss = avg_epoch_loss  # Use last epoch loss
+            
+            print(f"     Epoch {epoch+1}/{epochs} (State Model): Loss={avg_epoch_loss:.4f}")
+        
+        return {
+            'loss': total_loss,
+            'training_data_used': len(training_data),
+            'epochs': epochs,
+            'model_type': 'original'
+        }
+
+    def phase_6_evaluation_with_line_clearing_test(self, batch):
+        """
+        Enhanced Phase 6: Model evaluation with line clearing test
+        """
+        print(f"📊 Phase 6: Enhanced Model Evaluation (Batch {batch+1})")
+        
+        # Run standard evaluation
+        standard_results = self.phase_6_evaluation(batch)
+        
+        # ADDED: Line clearing test with 20 blocks at end of batch
+        if self.use_enhanced and (batch + 1) % 10 == 0:  # Every 10 batches
+            line_clearing_evaluator = self.enhanced_components.create_line_clearing_evaluator(self.env)
+            
+            line_clearing_results = line_clearing_evaluator.evaluate_line_clearing(
+                self.enhanced_components.state_model,
+                self.enhanced_components.q_learning,
+                self.enhanced_components.goal_selector,
+                batch + 1
+            )
+            
+            # Log line clearing metrics
+            self.writer.add_scalar('LineClearingTest/AvgLinesCleared', line_clearing_results['avg_lines_cleared'], batch)
+            self.writer.add_scalar('LineClearingTest/SuccessRate', line_clearing_results['success_rate'], batch)
+            self.writer.add_scalar('LineClearingTest/TotalLines', line_clearing_results['total_lines'], batch)
+            
+            # Update batch stats
+            self.update_batch_stats('line_clearing_test', line_clearing_results)
+            
+            # Update epsilon for goal selection
+            self.enhanced_components.update_epsilon()
+            
+            return {**standard_results, 'line_clearing': line_clearing_results}
+        
+        return standard_results
+
+    def save_checkpoint(self, batch):
+        """
+        Enhanced checkpoint saving with all network components
+        """
+        checkpoint_path = f"{self.config.checkpoint_dir}/batch_{batch+1}"
+        
+        # Save standard components
+        super().save_checkpoint(batch)
+        
+        # ADDED: Save enhanced components if available
+        if self.use_enhanced:
+            print(f"💾 Saving enhanced 6-phase checkpoint: {checkpoint_path}_enhanced_6phase.pt")
+            self.enhanced_components.save_checkpoints(checkpoint_path)
+        
+        print(f"✅ All checkpoints saved for batch {batch+1}")
+
+    def load_checkpoint(self, checkpoint_path):
+        """
+        Enhanced checkpoint loading with all network components
+        """
+        # Load standard components
+        super().load_checkpoint(checkpoint_path)
+        
+        # ADDED: Load enhanced components if available
+        if self.use_enhanced:
+            try:
+                enhanced_checkpoint_path = checkpoint_path.replace('.pt', '')
+                self.enhanced_components.load_checkpoints(enhanced_checkpoint_path)
+                print(f"✅ Enhanced 6-phase checkpoint loaded from {enhanced_checkpoint_path}_enhanced_6phase.pt")
+            except FileNotFoundError:
+                print(f"⚠️ Enhanced checkpoint not found, starting fresh")
+        
+        print(f"✅ All checkpoints loaded")
+
 class StagedTrainingConfig:
-    """Simple configuration class for staged training"""
+    """Enhanced Training Configuration with proportional staging support"""
     def __init__(self):
         # Get Tetris config for centralized parameters
-        from ..config import TetrisConfig
-        tetris_config = TetrisConfig()
+        self.tetris_config = TetrisConfig()
         
-        # Basic training parameters
-        self.num_batches = 300
-        self.visualize = False
-        self.log_dir = 'logs/staged_unified_training'
-        self.checkpoint_dir = 'checkpoints/staged_unified'
-        self.exploration_mode = 'rnd'
+        # Main parameters
+        self.num_batches = 50  # Default to 50 batches
+        self.batch_size = 64
+        self.learning_rate = 0.001
         
-        # Training parameters from centralized config
-        self.exploration_episodes = tetris_config.TrainingConfig.EXPLORATION_EPISODES
-        self.exploitation_episodes = tetris_config.TrainingConfig.EXPLOITATION_EPISODES
-        self.eval_episodes = tetris_config.TrainingConfig.EVAL_EPISODES
-        self.max_episode_steps = tetris_config.TrainingConfig.MAX_EPISODE_STEPS
-        self.batch_size = tetris_config.TrainingConfig.BATCH_SIZE
+        # State model and actor-critic parameters
+        self.state_lr = 0.0001
+        self.actor_lr = 0.0001  
+        self.critic_lr = 0.0001
+        self.reward_lr = 0.0001  # For Q-learning
         
-        # Model parameters
-        self.state_lr = tetris_config.TrainingConfig.STATE_LEARNING_RATE
-        self.reward_lr = tetris_config.TrainingConfig.REWARD_LEARNING_RATE
-        self.clip_ratio = tetris_config.TrainingConfig.PPO_CLIP_RATIO
+        # ENHANCED: Proportional staging support
+        self.stage_proportions = None  # Use default if None
         
-        # Training phases
-        self.state_training_samples = tetris_config.TrainingConfig.STATE_TRAINING_SAMPLES
-        self.state_epochs = tetris_config.TrainingConfig.STATE_EPOCHS
-        self.ppo_iterations = tetris_config.TrainingConfig.PPO_ITERATIONS
-        self.ppo_batch_size = tetris_config.TrainingConfig.PPO_BATCH_SIZE
-        self.ppo_epochs = tetris_config.TrainingConfig.PPO_EPOCHS
-        self.reward_batch_size = tetris_config.TrainingConfig.REWARD_BATCH_SIZE
+        # Training configuration
+        self.gamma = 0.99
+        self.epsilon = 0.2
+        self.value_coeff = 0.5
+        self.entropy_coeff = 0.01
         
-        # Buffer parameters
-        self.buffer_size = tetris_config.TrainingConfig.BUFFER_SIZE
-        self.min_buffer_size = tetris_config.TrainingConfig.MIN_BUFFER_SIZE
+        # Exploration configuration  
+        self.exploration_steps = 600
+        self.rnd_lr = 0.001
         
-        # Logging and saving
-        self.save_interval = tetris_config.LoggingConfig.SAVE_INTERVAL
+        # Evaluation configuration
+        self.eval_frequency = 10
+        self.eval_episodes = 10
         
-        # Device detection
+        # Checkpointing
+        self.save_frequency = 10
+        self.checkpoint_dir = "checkpoints"
+        self.log_dir = "logs"
+        
+        # Enhanced 6-phase configuration
+        self.use_enhanced_components = True  # Try to use enhanced components if available
+        
+        # ADDED: Device configuration
         import torch
         if torch.cuda.is_available():
             self.device = 'cuda'
@@ -590,52 +1051,106 @@ class StagedTrainingConfig:
             self.device = 'mps'
         else:
             self.device = 'cpu'
+        
+        # Additional attributes needed for compatibility
+        self.visualize = False
+        self.exploration_mode = 'rnd'
+        
+        # Training parameters from centralized config  
+        self.exploration_episodes = self.tetris_config.TrainingConfig.EXPLORATION_EPISODES
+        self.exploitation_episodes = self.tetris_config.TrainingConfig.EXPLOITATION_EPISODES
+        self.max_episode_steps = self.tetris_config.TrainingConfig.MAX_EPISODE_STEPS
+        
+        # Model parameters
+        self.clip_ratio = self.tetris_config.TrainingConfig.PPO_CLIP_RATIO
+        
+        # Training phases
+        self.state_training_samples = self.tetris_config.TrainingConfig.STATE_TRAINING_SAMPLES
+        self.state_epochs = self.tetris_config.TrainingConfig.STATE_EPOCHS
+        self.ppo_iterations = self.tetris_config.TrainingConfig.PPO_ITERATIONS
+        self.ppo_batch_size = self.tetris_config.TrainingConfig.PPO_BATCH_SIZE
+        self.ppo_epochs = self.tetris_config.TrainingConfig.PPO_EPOCHS
+        self.reward_batch_size = self.tetris_config.TrainingConfig.REWARD_BATCH_SIZE
+        
+        # Buffer parameters
+        self.buffer_size = self.tetris_config.TrainingConfig.BUFFER_SIZE
+        self.min_buffer_size = self.tetris_config.TrainingConfig.MIN_BUFFER_SIZE
+        
+        # Logging and saving
+        self.save_interval = self.tetris_config.LoggingConfig.SAVE_INTERVAL
+        
+    def set_stage_proportions(self, state_model_pct=50, actor_pct=33, joint_pct=17):
+        """
+        Set custom stage proportions
+        
+        Args:
+            state_model_pct: Percentage for state model pretraining (default 50%)
+            actor_pct: Percentage for actor training (default 33%)
+            joint_pct: Percentage for joint fine-tuning (default 17%)
+        """
+        total_pct = state_model_pct + actor_pct + joint_pct
+        if total_pct != 100:
+            print(f"⚠️ Warning: Percentages sum to {total_pct}%, normalizing to 100%")
+        
+        self.stage_proportions = {
+            'state_model_pretraining': state_model_pct / 100.0,
+            'actor_training': actor_pct / 100.0,
+            'joint_finetuning': joint_pct / 100.0
+        }
+        
+        print(f"🎯 Custom staging proportions set:")
+        print(f"   • State Model: {state_model_pct}%")
+        print(f"   • Actor Training: {actor_pct}%") 
+        print(f"   • Joint Fine-tuning: {joint_pct}%")
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Staged Unified Tetris RL Training")
-    parser.add_argument('--num_batches', type=int, default=300, help='Total number of training batches for staged training (e.g., 300)')
-    parser.add_argument('--visualize', action='store_true', help='Visualize training')
-    parser.add_argument('--log_dir', type=str, default='logs/staged_unified_training', help='Log directory')
-    parser.add_argument('--checkpoint_dir', type=str, default='checkpoints/staged_unified', help='Checkpoint directory')
-    parser.add_argument('--exploration_mode', type=str, default='rnd', 
-                       choices=['rnd', 'random', 'deterministic'],
-                       help='Exploration strategy: rnd, random, deterministic')
+    parser = argparse.ArgumentParser(description='Staged Unified Tetris Trainer with Enhanced Components')
+    parser.add_argument('--num_batches', type=int, default=50, help='Number of training batches')
+    parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+    parser.add_argument('--learning_rate', type=float, default=0.001, help='Learning rate')
+    parser.add_argument('--state_lr', type=float, default=0.0001, help='State model learning rate')
+    parser.add_argument('--actor_lr', type=float, default=0.0001, help='Actor learning rate')
+    parser.add_argument('--critic_lr', type=float, default=0.0001, help='Critic learning rate')
+    parser.add_argument('--reward_lr', type=float, default=0.0001, help='Reward model learning rate')
+    parser.add_argument('--exploration_steps', type=int, default=600, help='Exploration steps per batch')
+    parser.add_argument('--eval_frequency', type=int, default=10, help='Evaluation frequency')
+    parser.add_argument('--save_frequency', type=int, default=10, help='Save frequency')
+    parser.add_argument('--checkpoint_dir', type=str, default='checkpoints', help='Checkpoint directory')
+    parser.add_argument('--log_dir', type=str, default='logs', help='Log directory')
+    
+    # ENHANCED: Proportional staging arguments
+    parser.add_argument('--stage_model_pct', type=int, default=50, help='Percentage for state model pretraining (default 50%)')
+    parser.add_argument('--stage_actor_pct', type=int, default=33, help='Percentage for actor training (default 33%)')
+    parser.add_argument('--stage_joint_pct', type=int, default=17, help='Percentage for joint fine-tuning (default 17%)')
+    parser.add_argument('--use_custom_staging', action='store_true', help='Use custom staging proportions')
     
     args = parser.parse_args()
     
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('staged_unified_training.log')
-        ]
-    )
-    
-    # Create directories
-    os.makedirs(args.log_dir, exist_ok=True)
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
-    
-    # Create simple config
+    # Create config
     config = StagedTrainingConfig()
     config.num_batches = args.num_batches
-    config.visualize = args.visualize
-    config.log_dir = args.log_dir
+    config.batch_size = args.batch_size
+    config.learning_rate = args.learning_rate
+    config.state_lr = args.state_lr
+    config.actor_lr = args.actor_lr
+    config.critic_lr = args.critic_lr
+    config.reward_lr = args.reward_lr
+    config.exploration_steps = args.exploration_steps
+    config.eval_frequency = args.eval_frequency
+    config.save_frequency = args.save_frequency
     config.checkpoint_dir = args.checkpoint_dir
-    config.exploration_mode = args.exploration_mode
+    config.log_dir = args.log_dir
     
-    # Print configuration summary
-    print(f"\n🎮 Tetris RL Staged Training Configuration:")
-    print(f"   📦 Total Batches: {config.num_batches}")
-    print(f"   🔍 Exploration Mode: {config.exploration_mode.upper()}")
-    print(f"   👁️  Visualization: {'Enabled' if config.visualize else 'Disabled'}")
-    print(f"   📊 Logging: {config.log_dir}")
-    print(f"   💾 Checkpoints: {config.checkpoint_dir}")
-    print(f"   🚀 Staged training enabled with 3 phases.")
-    print()
+    # ENHANCED: Set custom staging proportions if requested
+    if args.use_custom_staging:
+        config.set_stage_proportions(
+            state_model_pct=args.stage_model_pct,
+            actor_pct=args.stage_actor_pct,
+            joint_pct=args.stage_joint_pct
+        )
     
-    # Initialize and run STAGED trainer
+    # Create trainer and run
     trainer = StagedUnifiedTrainer(config)
     trainer.run_training()
 

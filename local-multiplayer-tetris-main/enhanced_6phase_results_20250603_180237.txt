@@ -1,0 +1,16 @@
+Enhanced 6-Phase Training Results - 20250603_180237
+============================================================
+
+SYSTEM CONFIGURATION:
+- Training batches: 3
+- Exploration mode: iterative
+- Max pieces per episode: 2
+- Device: cpu
+- Goal-conditioned actor: NO PPO
+- Goal vector dimension: 5D
+
+TRAINING METRICS:
+- Average state loss: 3.5388
+- Average actor loss: 1.6096
+- Total lines cleared: 0
+- Average exploration efficiency: 12.8%
