@@ -243,13 +243,12 @@ class TetrisEnv(gym.Env):
                 }
                 return obs, reward, terminated, truncated, info
             rot, x = divmod(idx, 10)
-        # Place column first
+        # Work on the active piece
         piece = self.player.current_piece
-        piece.x = x
 
         grid = create_grid(self.player.locked_positions)
 
-        # Rotate toward desired orientation with at most 3 attempts
+        # 1) Apply rotation first (SRS kicks inside rotate)
         if rot != piece.rotation:
             # Decide direction and number of quarter-turns (1-3)
             cw_steps = (rot - piece.rotation) % 4
@@ -263,7 +262,10 @@ class TetrisEnv(gym.Env):
                 piece.rotate(direction, grid)  # uses SRS wall kicks
                 grid = create_grid(self.player.locked_positions)  # refresh grid after each attempt
 
-        # Simple boundary kick: if rotated piece hangs off left/right, shift into bounds
+        # 2) Position piece.x according to desired column *after* rotation
+        piece.x = x
+
+        # 3) Simple boundary kick: if rotated piece hangs off left/right, shift into bounds
         positions = convert_shape_format(piece)
         xs = [p[0] for p in positions]
         shift = 0
