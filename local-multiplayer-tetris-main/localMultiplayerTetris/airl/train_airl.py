@@ -19,7 +19,8 @@ import torch
 from imitation.algorithms.adversarial import airl
 from imitation.data.types import TrajectoryWithRew
 from stable_baselines3 import PPO
-
+from stable_baselines3.common.vec_env import DummyVecEnv
+from imitation.rewards.reward_nets import BasicRewardNet
 from ..tetris_env import TetrisEnv
 from datetime import datetime
 
@@ -53,7 +54,8 @@ def make_env(headless=True):
 def train_airl(demo_path: Path, timesteps: int, out_dir: Path, tb_dir: Path | None = None):
     demonstrations: list[TrajectoryWithRew] = load_demos(demo_path)
 
-    env = make_env(headless=True)
+    # Vectorized environment for SB3/imitation compatibility
+    vec_env = DummyVecEnv([lambda: make_env(headless=True)])
 
     # TensorBoard directory
     if tb_dir is None:
@@ -61,8 +63,8 @@ def train_airl(demo_path: Path, timesteps: int, out_dir: Path, tb_dir: Path | No
 
     # Generator (learner) policy with PPO
     learner = PPO(
-        "MlpPolicy",
-        env,
+        "MultiInputPolicy",
+        vec_env,
         batch_size=4096,
         n_steps=2048,
         learning_rate=3e-4,
@@ -71,6 +73,9 @@ def train_airl(demo_path: Path, timesteps: int, out_dir: Path, tb_dir: Path | No
         device="auto",
         tensorboard_log=str(tb_dir),
     )
+
+    # Reward network
+    reward_net = BasicRewardNet(vec_env.observation_space, vec_env.action_space)
 
     # SummaryWriter for custom logs (discriminator losses)
     writer = None
@@ -81,17 +86,24 @@ def train_airl(demo_path: Path, timesteps: int, out_dir: Path, tb_dir: Path | No
     # AIRL trainer
     airl_trainer = airl.AIRL(
         demonstrations=demonstrations,
-        expert_policy=None,
-        gen_policy=learner.policy,
-        env=env,
+        demo_batch_size=256,
+        venv=vec_env,
+        gen_algo=learner,
+        reward_net=reward_net,
     )
 
     total_steps = 0
     iter_steps = 10000
     while total_steps < timesteps:
         learner.learn(total_timesteps=iter_steps, reset_num_timesteps=False)
-        disc_loss = airl_trainer.train_disc()
-        airl_trainer.update_reward_net()
+
+        # Train discriminator and optionally update reward net
+        disc_stats = airl_trainer.train_disc()
+        disc_loss = 0.0
+        if isinstance(disc_stats, dict):
+            disc_loss = float(disc_stats.get("disc_loss", disc_stats.get("loss", 0)))
+        if hasattr(airl_trainer, "update_reward_net"):
+            airl_trainer.update_reward_net()
         total_steps += iter_steps
         if total_steps % 100000 == 0:
             out_dir.mkdir(parents=True, exist_ok=True)
