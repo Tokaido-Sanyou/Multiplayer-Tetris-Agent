@@ -41,20 +41,43 @@ import torch.nn as nn
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, InputLayer
 from tensorflow.keras.utils import get_custom_objects
+from tensorflow.keras.mixed_precision import Policy
 
 # Import custom DTypePolicy if the patched version exists ------------------
 try:
     from dqn_agent import DTypePolicy  # type: ignore
 except Exception:
     # Fallback: register a dummy alias so model loading still works.
-    from tensorflow.keras.mixed_precision import Policy as _Policy
-
-    class DTypePolicy(_Policy):
+    class DTypePolicy(Policy):
         pass
 
     get_custom_objects()["DTypePolicy"] = DTypePolicy  # type: ignore
 else:
     get_custom_objects()["DTypePolicy"] = DTypePolicy  # type: ignore
+
+
+# ---------------------------------------------------------------------------
+# Compatibility patches for legacy Keras models
+# ---------------------------------------------------------------------------
+# 1. InputLayer.from_config may receive obsolete 'batch_shape'.
+from tensorflow.keras.layers import InputLayer as _InputLayer
+_orig_from_config = _InputLayer.from_config
+
+@classmethod
+def _patched_from_config(cls, config):
+    # Handle legacy 'batch_shape' -> newer 'shape'
+    if "batch_shape" in config and "shape" not in config:
+        batch_shape = config.pop("batch_shape")
+        # Convert [None, d1, d2, ...] -> (d1, d2, ...)
+        if batch_shape is not None and len(batch_shape) >= 2:
+            config["shape"] = tuple(batch_shape[1:])
+    return _orig_from_config(config)
+
+_InputLayer.from_config = _patched_from_config
+
+# 2. Older TensorFlow versions exposed Policy.deserialize().
+if not hasattr(Policy, "deserialize"):
+    Policy.deserialize = classmethod(lambda cls, identifier: cls("float32"))
 
 
 ACTIVATION_MAP = {
@@ -90,7 +113,15 @@ def convert(keras_path: Path, torch_path: Path) -> None:
     if not dense_layers:
         raise RuntimeError("No Dense layers found – only fully-connected models are supported.")
 
-    layer_sizes = [dense_layers[0].input_shape[-1]] + [l.units for l in dense_layers]
+    # Determine input dimension of first Dense layer; fall back to kernel shape if input_shape missing
+    first_in_dim = getattr(dense_layers[0], "input_shape", None)
+    if first_in_dim is not None:
+        first_in_dim = first_in_dim[-1]
+    else:
+        # Keras 3 may drop input_shape attr on layers restored from config
+        first_in_dim = dense_layers[0].kernel.shape[0]
+
+    layer_sizes = [int(first_in_dim)] + [int(l.units) for l in dense_layers]
     activations = [l.activation.__name__ for l in dense_layers]
 
     # ------------------------------------------------------------------

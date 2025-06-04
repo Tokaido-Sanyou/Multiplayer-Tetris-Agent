@@ -70,26 +70,53 @@ def draw_grid(surface, grid_1, grid_2, add=0):
                            (top_left_x + add + j*block_size, top_left_y + play_height))
 
 def clear_rows(grid, locked_pos):
-    inc = 0
-    for i in range(len(grid)-1,-1,-1):
-        row = grid[i]
-        if (0,0,0) not in row:
-            inc += 1
-            ind = i
-            for j in range(len(row)):
-                try:
-                    del locked_pos[(j,i)]
-                except:
-                    continue
+    """Remove complete rows and shift everything above down.
 
-    if inc > 0:
-        for key in sorted(list(locked_pos),key= lambda x:x[1],reverse=True):
-            x,y = key
-            if y < ind:
-                newKey = (x,y+inc)
-                locked_pos[newKey] = locked_pos.pop(key)
+    This implementation fixes a bug in the legacy version where only the
+    *top-most* cleared row was considered when shifting blocks.  With
+    multiple non-contiguous cleared rows that could leave floating blocks or
+    create gaps.  The new version shifts each block by the **exact number**
+    of cleared rows *below* its original y-coordinate.
 
-    return inc
+    Parameters
+    ----------
+    grid : list[list[tuple]]
+        Current RGB grid from ``create_grid`` (only used to detect full
+        rows).
+    locked_pos : dict[(int,int) -> (int,int,int)]
+        Mapping of (x, y) -> color tuples for all locked blocks.
+
+    Returns
+    -------
+    int
+        Number of rows cleared.
+    """
+
+    row_indices = [i for i, row in enumerate(grid) if (0, 0, 0) not in row]
+    if not row_indices:
+        return 0
+
+    # Delete blocks in cleared rows
+    for row in row_indices:
+        for col in range(len(grid[row])):
+            locked_pos.pop((col, row), None)
+
+    # Shift remaining blocks down by the count of cleared rows below each one
+    rows_cleared_set = set(row_indices)
+    new_locked = {}
+    # Iterate bottom-up so we can compute running shift count efficiently
+    shift = 0
+    for y in range(len(grid) - 1, -1, -1):
+        if y in rows_cleared_set:
+            shift += 1  # this row was cleared – increase shift for rows above
+            continue
+        for x in range(len(grid[0])):
+            if (x, y) in locked_pos:
+                new_locked[(x, y + shift)] = locked_pos[(x, y)]
+
+    locked_pos.clear()
+    locked_pos.update(new_locked)
+    return len(row_indices)
 
 def add_garbage_line(locked_positions, num_lines=1):
     new_positions = {}

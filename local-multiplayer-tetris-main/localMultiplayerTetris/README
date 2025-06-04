@@ -1,0 +1,4 @@
+
+# evaluate DQN model #
+
+python -m localMultiplayerTetris.eval_pytorch_dqn --model tetris-ai-master/sample_torch.pth --render
