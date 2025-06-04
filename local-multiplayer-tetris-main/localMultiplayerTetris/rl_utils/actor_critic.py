@@ -167,9 +167,14 @@ class ActorCriticAgent:
         # Initialize network
         self.network = ActorCritic(state_dim, action_dim)
         
-        # Initialize optimizers
-        self.actor_optimizer = optim.Adam(self.network.actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = optim.Adam(self.network.critic.parameters(), lr=critic_lr)
+        # Initialize optimizer (single optimizer so feature extractor trains)
+        self.optimizer = optim.Adam(
+            [
+                {'params': self.network.feature_extractor.parameters(), 'lr': critic_lr},
+                {'params': self.network.actor.parameters(), 'lr': actor_lr},
+                {'params': self.network.critic.parameters(), 'lr': critic_lr},
+            ]
+        )
         
         # Initialize replay buffer
         self.memory = ReplayBuffer(100000)
@@ -332,51 +337,46 @@ class ActorCriticAgent:
         """
         Update actor and critic networks using replay buffer
         """
-        # Sample batch from replay buffer (sample returns states, actions, rewards, next_states, dones, info, indices, weights)
         sample = self.memory.sample(self.batch_size)
         if sample is None:
             return None
         states, actions, rewards, next_states, dones, *_ = sample
-         
+
         # Convert to tensors
         states = torch.FloatTensor(states).to(self.device)
         actions = torch.LongTensor(actions).to(self.device).unsqueeze(1)
         rewards = torch.FloatTensor(rewards).to(self.device).unsqueeze(1)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).to(self.device).unsqueeze(1)
-        # Extract shared features
+
+        # Extract shared features once
         features = self.network.feature_extractor(states)
         next_features = self.network.feature_extractor(next_states)
-        
+
         # Compute targets for critic (TD target)
         with torch.no_grad():
             next_state_values = self.network.critic(next_features)
             targets = rewards + self.gamma * next_state_values * (1 - dones)
-        
-        # ---------------- Critic update ---------------- #
-        self.critic_optimizer.zero_grad()
+
+        # ---------------- Combined update ---------------- #
+        self.optimizer.zero_grad()
+        # Critic loss
         state_values = self.network.critic(features)
         critic_loss = nn.MSELoss()(state_values, targets)
-        critic_loss.backward(retain_graph=True)
-        nn.utils.clip_grad_norm_(self.network.critic.parameters(), self.gradient_clip)
-        self.critic_optimizer.step()
-
-        # ---------------- Actor update ---------------- #
-        self.actor_optimizer.zero_grad()
+        # Actor loss
         action_probs = self.network.actor(features)
-        # Avoid log(0) by clamping
         selected_action_probs = action_probs.gather(1, actions).clamp(min=1e-8)
         log_probs = torch.log(selected_action_probs)
-        # Advantage = TD-target − V(s)
         advantages = (targets - state_values).detach()
         actor_loss = -(log_probs * advantages).mean()
-        # Optional entropy regularization to reduce premature convergence/divergence
+        # Entropy regularization
         entropy = -(action_probs * torch.log(action_probs.clamp(min=1e-8))).sum(dim=1).mean()
-        actor_loss -= 0.01 * entropy  # encourage exploration
-        actor_loss.backward()
-        nn.utils.clip_grad_norm_(self.network.actor.parameters(), self.gradient_clip)
-        self.actor_optimizer.step()
-        # return losses: (actor_loss, critic_loss)
+        actor_loss -= 0.01 * entropy
+        # Backward on combined loss
+        total_loss = actor_loss + critic_loss
+        total_loss.backward()
+        nn.utils.clip_grad_norm_(self.network.parameters(), self.gradient_clip)
+        self.optimizer.step()
         return actor_loss.item(), critic_loss.item()
 
     # ---------------- Persistence helpers ---------------- #
@@ -388,8 +388,7 @@ class ActorCriticAgent:
         """
         checkpoint = {
             'network': self.network.state_dict(),
-            'actor_optimizer': self.actor_optimizer.state_dict(),
-            'critic_optimizer': self.critic_optimizer.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
             'epsilon': self.epsilon,
             'gamma': self.gamma,
             'episode': self.current_episode
@@ -405,10 +404,8 @@ class ActorCriticAgent:
         """
         checkpoint = torch.load(filepath, map_location=self.device if map_location is None else map_location)
         self.network.load_state_dict(checkpoint['network'])
-        if 'actor_optimizer' in checkpoint and checkpoint['actor_optimizer']:
-            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-        if 'critic_optimizer' in checkpoint and checkpoint['critic_optimizer']:
-            self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        if 'optimizer' in checkpoint and checkpoint['optimizer']:
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
         self.epsilon = checkpoint.get('epsilon', self.epsilon)
         self.gamma = checkpoint.get('gamma', self.gamma)
         self.current_episode = checkpoint.get('episode', self.current_episode)
