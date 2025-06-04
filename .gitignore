@@ -34,3 +34,7 @@ Thumbs.db
 
 checkpoints/
 logs/
+checkpoints_vectorized/
+
+#pkl
+*.pkl

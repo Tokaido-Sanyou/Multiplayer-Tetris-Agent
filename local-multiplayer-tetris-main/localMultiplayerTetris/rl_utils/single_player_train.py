@@ -3,28 +3,37 @@ import numpy as np
 import torch
 import logging
 from ..tetris_env import TetrisEnv
-from .dqn_agent import DQNAgent
+from .actor_critic import ActorCriticAgent
 from .train import preprocess_state, evaluate_agent
+from .vector_train import train_vectorized  # vectorized parallel training
 import pygame
 import cProfile
 import pstats
 import sys
+import os
 import argparse
 from torch.utils.tensorboard import SummaryWriter
-from datetime import datetime
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
+# Helper to configure root logger with console output each run
+def _configure_logging(verbose: bool=False):
+    """Configure root logger; force reconfiguration each run."""
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('training.log', mode='w'),
+            logging.StreamHandler()
+        ],
+        force=True  # Python>=3.8: override previous config
+    )
 
-def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False, top_k=3):
+# Call early so rest of module uses it
+_configure_logging(verbose='--verbose' in sys.argv)
+
+def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False):
     """
-    Train an agent as player 1 in the Tetris environment using DQN
+    Train an agent as player 1 in the Tetris environment
     
     Args:
         num_episodes: Number of episodes to train for
@@ -34,21 +43,26 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         checkpoint: Path to checkpoint file to load
         no_eval: Whether to disable evaluation during training
         verbose: Enable per-step logging
-        top_k: Number of top actions to sample from during action selection
     """
-    # Set up TensorBoard writer with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = os.path.join('logs', 'tensorboard', f'dqn_{timestamp}')
-    writer = SummaryWriter(log_dir=log_dir)
-    
+    # Set up TensorBoard writer
+    writer = SummaryWriter(log_dir='logs/tensorboard')
     try:
         # Create environment; show window if visualize=True
         env = TetrisEnv(single_player=True, headless=not visualize)
         
         # Create agent
-        state_dim = 202  # 20x10 grid + next_piece + hold_piece scalars
-        action_dim = 8   # 8 possible actions, including no-op (ID 7)
-        agent = DQNAgent(state_dim, action_dim, top_k_ac=top_k)
+        state_dim = 207  # 20x10 grid + next_piece + hold_piece + current_shape + current_rotation + current_x + current_y + can_hold
+        action_dim = 41   # 40 placements + 1 hold
+        agent = ActorCriticAgent(
+            state_dim,
+            action_dim,
+            gamma_start=0.9,
+            gamma_end=0.99,
+            epsilon_start=1.0,
+            epsilon_end=0.01,
+            schedule_episodes=num_episodes
+        )
+        print("Using device:", agent.device)
         if checkpoint:
             try:
                 agent.load(checkpoint)
@@ -58,7 +72,7 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         
         # Create directories for saving
         os.makedirs('checkpoints', exist_ok=True)
-        os.makedirs(os.path.dirname(log_dir), exist_ok=True)
+        os.makedirs('logs', exist_ok=True)
         
         # Training metrics
         episode_rewards = []
@@ -66,47 +80,32 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         episode_lines = []
         episode_scores = []
         episode_max_levels = []
-        q_losses = []
-        episode_rnd_losses = []
-        episode_intrinsic_rewards = []
+        actor_losses = []
+        critic_losses = []
         
         for episode in range(num_episodes):
+            episode_pieces_placed = 0
             try:
                 # Initialize observation and state
-                obs = env.reset()
+                obs, _ = env.reset()  # Unpack the (obs, info) tuple
+                state = preprocess_state(obs)
                 done = False
                 episode_reward = 0
                 episode_length = 0
                 episode_lines_cleared = 0
                 episode_score = 0
                 episode_max_level = 0
-                episode_q_loss = 0
-                episode_rnd_loss = 0
-                episode_intrinsic_reward = 0
+                episode_actor_loss = 0
+                episode_critic_loss = 0
                 train_steps = 0
-                episode_pieces_placed = 0
-                last_piece_count = 0
-                no_piece_steps = 0
                 
                 while not done:
                     try:
                         # Select and perform action
-                        action = agent.select_action(obs)
-                        step_result = env.step(action)
-                        
-                        # Handle potential error returns from env.step()
-                        if isinstance(step_result, (int, float)):
-                            logging.error(f"Environment step returned {step_result} instead of state tuple")
-                            done = True
-                            break
-                            
-                        next_obs, reward, done, info = step_result
-                        
-                        # Validate state structure
-                        if not isinstance(next_obs, dict) or 'grid' not in next_obs:
-                            logging.error(f"Invalid state structure: {next_obs}")
-                            done = True
-                            break
+                        action = agent.select_action(state)
+                        next_obs, reward, terminated, truncated, info = env.step(action)
+                        done = terminated or truncated
+                        next_state = preprocess_state(next_obs)
                         
                         # Render if visualization enabled
                         if visualize:
@@ -118,58 +117,21 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                         episode_lines_cleared += info.get('lines_cleared', 0)
                         episode_score += info.get('score', 0)
                         episode_max_level = max(episode_max_level, info.get('level', 0))
-                        
-                        # Track piece placement
-                        try:
-                            current_piece_count = np.sum(next_obs['grid'] > 0)
-                            piece_placed = current_piece_count > last_piece_count
-                            if piece_placed:
-                                episode_pieces_placed += 1
-                                no_piece_steps = 0
-                            else:
-                                no_piece_steps += 1
-                            last_piece_count = current_piece_count
-                        except Exception as e:
-                            logging.error(f"Error tracking piece placement: {e}")
-                            done = True
-                            break
+                        episode_pieces_placed += int(info.get('piece_placed', False))
                         
                         # Store transition in replay buffer
-                        try:
-                            agent.memory.push(obs, action, reward, next_obs, done, info)
-                        except Exception as e:
-                            logging.error(f"Error storing transition: {e}")
-                            done = True
-                            break
+                        agent.memory.push(obs, action, reward, next_obs, done, info)
                         
                         # Train agent
-                        try:
-                            if piece_placed:
-                                # Train multiple times when a piece is placed
-                                for _ in range(3):
-                                    train_result = agent.train()
-                                    if train_result is not None:
-                                        q_loss, rnd_loss = train_result
-                                        episode_q_loss += q_loss
-                                        episode_rnd_loss += rnd_loss
-                                        train_steps += 1
-                                        writer.add_scalar('Step/QLoss', q_loss, episode * env.max_steps + episode_length)
-                                        writer.add_scalar('Step/RNDLoss', rnd_loss, episode * env.max_steps + episode_length)
-                            else:
-                                # Train once when no piece is placed
-                                train_result = agent.train()
-                                if train_result is not None:
-                                    q_loss, rnd_loss = train_result
-                                    episode_q_loss += q_loss
-                                    episode_rnd_loss += rnd_loss
-                                    train_steps += 1
-                                    writer.add_scalar('Step/QLoss', q_loss, episode * env.max_steps + episode_length)
-                                    writer.add_scalar('Step/RNDLoss', rnd_loss, episode * env.max_steps + episode_length)
-                        except Exception as e:
-                            logging.error(f"Error during training: {str(e)}")
-                            # Don't break here, continue with episode
+                        losses = agent.train()
+                        if losses is not None:
+                            actor_loss, critic_loss = losses
+                            episode_actor_loss += actor_loss
+                            episode_critic_loss += critic_loss
+                            train_steps += 1
                         
-                        # Update observation
+                        # Update state and observation
+                        state = next_state
                         obs = next_obs
                         
                         # Log episode details
@@ -177,42 +139,28 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                             logging.info(f"Action taken: {action}")
                             logging.info(f"Reward received: {reward}")
                             logging.info(f"Game state: {info}")
-                            logging.info(f"Pieces placed: {episode_pieces_placed}")
-                        
-                        # Get intrinsic reward
-                        try:
-                            state_tensor = torch.FloatTensor(np.concatenate([
-                                obs['grid'].flatten(),
-                                [obs['next_piece']],
-                                [obs['hold_piece']]
-                            ])).unsqueeze(0).to(agent.device)
-                            intrinsic_reward = agent.rnd.compute_intrinsic_reward(state_tensor).item()
-                            episode_intrinsic_reward += intrinsic_reward
-                            
-                            # Log step-level metrics
-                            writer.add_scalar('Step/IntrinsicReward', intrinsic_reward, episode * env.max_steps + episode_length)
-                            writer.add_scalar('Step/PiecesPlaced', episode_pieces_placed, episode * env.max_steps + episode_length)
-                        except Exception as e:
-                            logging.error(f"Error computing intrinsic reward: {e}")
-                            # Don't break here, continue with episode
-                        
-                        # Early termination if no pieces placed after too many steps
-                        if no_piece_steps > 30:  # Reduced from 50 to 30
-                            logging.warning(f"Terminating episode {episode + 1} early - no pieces placed for {no_piece_steps} steps")
-                            done = True
                         
                     except Exception as e:
                         logging.error(f"Error during episode {episode + 1} step: {str(e)}")
-                        done = True
                         break
                 
-                # Update exploration rate
-                agent.update_epsilon()
+                # Debug end-of-episode reason
+                if info.get('invalid_move', False):
+                    reason = 'invalid placement'
+                elif terminated:
+                    reason = 'game over (blocks above grid)'
+                elif truncated:
+                    reason = 'max steps reached'
+                else:
+                    reason = 'unknown'
+                print(f"Episode {episode+1} ended: {reason}", flush=True)
+                # Update exploration / gamma schedules
+                agent.update_schedules(episode+1)
                 
-                # Calculate average loss
+                # Calculate average losses
                 if train_steps > 0:
-                    episode_q_loss /= train_steps
-                    episode_rnd_loss /= train_steps
+                    episode_actor_loss /= train_steps
+                    episode_critic_loss /= train_steps
                 
                 # Store episode metrics
                 episode_rewards.append(episode_reward)
@@ -220,52 +168,84 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
                 episode_lines.append(episode_lines_cleared)
                 episode_scores.append(episode_score)
                 episode_max_levels.append(episode_max_level)
-                q_losses.append(episode_q_loss)
-                episode_rnd_losses.append(episode_rnd_loss)
-                episode_intrinsic_rewards.append(episode_intrinsic_reward)
+                actor_losses.append(episode_actor_loss)
+                critic_losses.append(episode_critic_loss)
                 
-                # Log episode summary to TensorBoard
-                writer.add_scalar('Episode/Reward', episode_reward, episode+1)
-                writer.add_scalar('Episode/Length', episode_length, episode+1)
-                writer.add_scalar('Episode/Lines', episode_lines_cleared, episode+1)
-                writer.add_scalar('Episode/Score', episode_score, episode+1)
-                writer.add_scalar('Episode/PiecesPlaced', episode_pieces_placed, episode+1)
-                writer.add_scalar('Episode/MaxLevel', episode_max_level, episode+1)
-                writer.add_scalar('Episode/Epsilon', agent.epsilon, episode+1)
-                if train_steps > 0:
-                    writer.add_scalar('Episode/AvgQLoss', episode_q_loss, episode+1)
-                    writer.add_scalar('Episode/AvgRNDLoss', episode_rnd_loss, episode+1)
-                writer.add_scalar('Episode/IntrinsicReward', episode_intrinsic_reward, episode+1)
-                
-                # Log episode summary to console
+                # Log episode summary
                 logging.info(f"Episode {episode + 1}/{num_episodes}")
-                logging.info(f"Player 1 Reward: {episode_reward:.2f}")
-                logging.info(f"Length: {episode_length}")
-                logging.info(f"Lines Cleared: {episode_lines_cleared}")
+                logging.info(f"Reward: {episode_reward:.2f}")
                 logging.info(f"Score: {episode_score}")
-                logging.info(f"Pieces Placed: {episode_pieces_placed}")
+                logging.info(f"Lines Cleared: {episode_lines_cleared}")
                 logging.info(f"Max Level: {episode_max_level}")
+                logging.info(f"Episode Length: {episode_length}")
+                logging.info(f"Pieces Placed: {episode_pieces_placed}")
                 logging.info(f"Epsilon: {agent.epsilon:.3f}")
+                logging.info(f"Gamma: {agent.gamma:.3f}")
                 if train_steps > 0:
-                    logging.info(f"Q-Loss: {episode_q_loss:.4f}")
-                    logging.info(f"RND-Loss: {episode_rnd_loss:.4f}")
-                logging.info(f"Intrinsic Reward: {episode_intrinsic_reward:.3f}")
+                    logging.info(f"Actor Loss: {episode_actor_loss:.4f}")
+                    logging.info(f"Critic Loss: {episode_critic_loss:.4f}")
                 logging.info("")
+                
+                # Log to TensorBoard
+                writer.add_scalar('Episode/Reward', episode_reward, episode + 1)
+                writer.add_scalar('Episode/Score', episode_score, episode + 1)
+                writer.add_scalar('Episode/Lines', episode_lines_cleared, episode + 1)
+                writer.add_scalar('Episode/MaxLevel', episode_max_level, episode + 1)
+                writer.add_scalar('Episode/Length', episode_length, episode + 1)
+                writer.add_scalar('Episode/PiecesPlaced', episode_pieces_placed, episode + 1)
+                writer.add_scalar('Episode/Epsilon', agent.epsilon, episode + 1)
+                writer.add_scalar('Episode/Gamma', agent.gamma, episode + 1)
+                if train_steps > 0:
+                    writer.add_scalar('Loss/Actor', episode_actor_loss, episode + 1)
+                    writer.add_scalar('Loss/Critic', episode_critic_loss, episode + 1)
+                
+                # Print episode summary
+                print(f"Episode {episode + 1}/{num_episodes}")
+                print(f"Reward: {episode_reward:.2f}")
+                print(f"Score: {episode_score}")
+                print(f"Lines Cleared: {episode_lines_cleared}")
+                print(f"Max Level: {episode_max_level}")
+                print(f"Episode Length: {episode_length}")
+                print(f"Pieces Placed: {episode_pieces_placed}")
+                print(f"Epsilon: {agent.epsilon:.3f}")
+                print(f"Gamma: {agent.gamma:.3f}")
+                if train_steps > 0:
+                    print(f"Actor Loss: {episode_actor_loss:.4f}")
+                    print(f"Critic Loss: {episode_critic_loss:.4f}")
+                print()
                 
                 # Save model checkpoint
                 if (episode + 1) % save_interval == 0:
                     try:
-                        agent.save(f'checkpoints/dqn_episode_{episode + 1}.pt')
+                        agent.save(f'checkpoints/actor_critic_episode_{episode + 1}.pt')
                         logging.info(f"Saved checkpoint at episode {episode + 1}")
                     except Exception as e:
-                        logging.error(f"Error saving checkpoint: {str(e)}")
+                        logging.error(f"Error saving checkpoint: {e}")
                 
                 # Evaluate agent
-                if not no_eval and (episode + 1) % eval_interval == 0:
+                if (episode + 1) % eval_interval == 0 and not no_eval:
                     try:
-                        eval_reward = evaluate_agent(env, agent)
-                        writer.add_scalar('Evaluation/Reward', eval_reward, episode+1)
-                        logging.info(f"Evaluation Reward: {eval_reward:.2f}")
+                        logging.info(f"Evaluating agent at episode {episode + 1}...")
+                        # evaluate_agent now returns (rewards, scores, lines)
+                        eval_rewards, eval_scores, eval_lines = evaluate_agent(env, agent)
+                        r_avg, r_std, r_max = np.mean(eval_rewards), np.std(eval_rewards), np.max(eval_rewards)
+                        s_avg, s_std, s_max = np.mean(eval_scores), np.std(eval_scores), np.max(eval_scores)
+                        l_max = np.max(eval_lines)
+                        # log to console
+                        logging.info(f"Eval Rewards   – avg={r_avg:.2f}, std={r_std:.2f}, max={r_max:.2f}")
+                        logging.info(f"Eval Scores    – avg={s_avg:.2f}, std={s_std:.2f}, max={s_max:.2f}")
+                        logging.info(f"Eval Lines Cleared – max={l_max}")
+                        # log to TensorBoard
+                        writer.add_scalar('Eval/AvgReward', r_avg, episode + 1)
+                        writer.add_scalar('Eval/StdReward', r_std, episode + 1)
+                        writer.add_scalar('Eval/MaxReward', r_max, episode + 1)
+                        writer.add_scalar('Eval/AvgScore', s_avg, episode + 1)
+                        writer.add_scalar('Eval/StdScore', s_std, episode + 1)
+                        writer.add_scalar('Eval/MaxScore', s_max, episode + 1)
+                        writer.add_scalar('Eval/MaxLines', l_max, episode + 1)
+                        print(f"Eval Rewards   – avg={r_avg:.2f}, std={r_std:.2f}, max={r_max:.2f}")
+                        print(f"Eval Scores    – avg={s_avg:.2f}, std={s_std:.2f}, max={s_max:.2f}")
+                        print(f"Eval Lines Cleared – max={l_max}")
                         logging.info("")
                     except Exception as e:
                         logging.error(f"Error during evaluation: {str(e)}")
@@ -276,19 +256,16 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
         
         # Save final model and metrics
         try:
-            agent.save('checkpoints/dqn_final.pt')
-            # Save metrics as numpy arrays
-            metrics = {
-                'rewards': np.array(episode_rewards),
-                'lengths': np.array(episode_lengths),
-                'lines': np.array(episode_lines),
-                'scores': np.array(episode_scores),
-                'max_levels': np.array(episode_max_levels),
-                'q_losses': np.array(q_losses),
-                'rnd_losses': np.array(episode_rnd_losses),
-                'intrinsic_rewards': np.array(episode_intrinsic_rewards)
-            }
-            np.save(os.path.join(log_dir, 'training_metrics.npy'), metrics)
+            agent.save('checkpoints/actor_critic_final.pt')
+            np.save('logs/training_metrics.npy', {
+                'rewards': episode_rewards,
+                'lengths': episode_lengths,
+                'lines': episode_lines,
+                'scores': episode_scores,
+                'max_levels': episode_max_levels,
+                'actor_losses': actor_losses,
+                'critic_losses': critic_losses
+            })
             logging.info("Training completed successfully")
         except Exception as e:
             logging.error(f"Error saving final model and metrics: {str(e)}")
@@ -301,6 +278,9 @@ def train_single_player(num_episodes=1000, save_interval=100, eval_interval=50, 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--vector', action='store_true', help='Use vectorized parallel environments')
+    parser.add_argument('--num-envs', type=int, default=4, help='Number of parallel environments when using --vector')
+    parser.add_argument('--eval', action='store_true', help='Run evaluation only (no training, no exploration, no gradients)')
     parser.add_argument('--visualize', action='store_true', help='Enable GUI visualization')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint file to load')
     parser.add_argument('--episodes', type=int, default=1000, help='Number of episodes to train')
@@ -309,23 +289,84 @@ if __name__ == '__main__':
     parser.add_argument('--no-eval', action='store_true', help='Disable evaluation during training')
     parser.add_argument('--verbose', action='store_true', help='Enable per-step logging')
     parser.add_argument('--profile', action='store_true', help='Enable profiling')
-    parser.add_argument('--top-k', type=int, default=3, help='Number of top actions to sample from')
     args = parser.parse_args()
 
     profiler = cProfile.Profile() if args.profile else None
     if profiler:
         profiler.enable()
     try:
-        train_single_player(
-            num_episodes=args.episodes,
-            save_interval=args.save_interval,
-            eval_interval=args.eval_interval,
-            visualize=args.visualize,
-            checkpoint=args.checkpoint,
-            no_eval=args.no_eval,
-            verbose=args.verbose,
-            top_k=args.top_k
-        )
+        if args.vector:
+            # --- Vectorized multi-environment training ---
+            train_vectorized(
+                num_envs=args.num_envs,
+                num_episodes=args.episodes,
+                save_interval=args.save_interval,
+                eval_interval=args.eval_interval,
+                checkpoint=args.checkpoint,
+                no_eval=args.no_eval,
+                headless_eval=not args.visualize  # render only if visualize requested
+            )
+        elif args.eval:
+            # Evaluation-only mode: no training, no exploration, no gradients
+            from .train import preprocess_state
+            env = TetrisEnv(single_player=True, headless=not args.visualize)
+            state_dim = 207
+            action_dim = 41
+            agent = ActorCriticAgent(
+                state_dim,
+                action_dim,
+                gamma_start=0.9,
+                gamma_end=0.99,
+                epsilon_start=0.0,
+                epsilon_end=0.0,
+                schedule_episodes=1
+            )
+            if args.checkpoint:
+                agent.load(args.checkpoint)
+            agent.epsilon = 0.0
+            num_eval_episodes = args.episodes
+            rewards = []
+            scores = []
+            lines = []
+            for ep in range(num_eval_episodes):
+                obs, _ = env.reset()
+                state = preprocess_state(obs)
+                done = False
+                total_reward = 0
+                total_score = 0
+                total_lines = 0
+                steps = 0
+                with torch.no_grad():
+                    while not done:
+                        action = agent.select_action(state)
+                        next_obs, reward, terminated, truncated, info = env.step(action)
+                        done = terminated or truncated
+                        state = preprocess_state(next_obs)
+                        total_reward += reward
+                        total_score += info.get('score', 0)
+                        total_lines += info.get('lines_cleared', 0)
+                        steps += 1
+                        if args.visualize:
+                            env.render()
+                rewards.append(total_reward)
+                scores.append(total_score)
+                lines.append(total_lines)
+                print(f"Eval Episode {ep+1}/{num_eval_episodes} | Reward: {total_reward:.2f} | Score: {total_score} | Lines: {total_lines} | Steps: {steps}")
+            print(f"\nEval Results over {num_eval_episodes} episodes:")
+            print(f"Avg Reward: {np.mean(rewards):.2f} ± {np.std(rewards):.2f}")
+            print(f"Avg Score: {np.mean(scores):.2f}")
+            print(f"Avg Lines: {np.mean(lines):.2f}")
+            env.close()
+        else:
+            train_single_player(
+                num_episodes=args.episodes,
+                save_interval=args.save_interval,
+                eval_interval=args.eval_interval,
+                visualize=args.visualize,
+                checkpoint=args.checkpoint,
+                no_eval=args.no_eval,
+                verbose=args.verbose
+            )
     except KeyboardInterrupt:
         print("Training interrupted by user")
     finally:

@@ -17,28 +17,15 @@ def preprocess_state(state):
     - hold_piece: scalar ID (0-7)
     
     Returns:
-        Flattened array of shape (207,) containing:
+        Flattened array of shape (202,) containing:
         - First 200 values: Flattened grid
         - Next value: next_piece
-        - hold_piece
-        - current_shape
-        - current_rotation
-        - current_x
-        - current_y
-        - can_hold
+        - Last value: hold_piece
     """
-    # Flatten grid and append metadata scalars
-    grid_flat = state['grid'].flatten().astype(np.float32)  # 200 values
-    metadata = np.array([
-        state['next_piece'],
-        state['hold_piece'],
-        state.get('current_shape', 0),
-        state.get('current_rotation', 0),
-        state.get('current_x', 0),
-        state.get('current_y', 0),
-        state.get('can_hold', 1)
-    ], dtype=np.float32)  # 7 values
-    return np.concatenate([grid_flat, metadata])
+    grid = state['grid'].flatten()
+    next_piece = np.array([state['next_piece']])
+    hold_piece = np.array([state['hold_piece']])
+    return np.concatenate([grid, next_piece, hold_piece])
 
 def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interval=50):
     """
@@ -51,8 +38,15 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
         save_interval: Save model every N episodes
         eval_interval: Evaluate agent every N episodes
     
-    Action Space:
-    - Flattened placement index = rotation*10 + column (4×10=40 actions)
+    Action Space (from tetris_env.py):
+    - 0: Move Left
+    - 1: Move Right
+    - 2: Move Down
+    - 3: Rotate Clockwise
+    - 4: Rotate Counter-clockwise
+    - 5: Hard Drop
+    - 6: Hold Piece
+    - 7: No-op action
     
     Reward Structure (from tetris_env.py):
     - +100 per line cleared
@@ -75,8 +69,8 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
     critic_losses = []
     
     for episode in range(num_episodes):
-        obs, _ = env.reset()  # Unpack the (obs, info) tuple
-        state = preprocess_state(obs)
+        state = env.reset()
+        state = preprocess_state(state)
         done = False
         episode_reward = 0
         episode_length = 0
@@ -90,9 +84,8 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
         while not done:
             # Select and perform action
             action = agent.select_action(state)
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            next_state = preprocess_state(next_obs)
+            next_state, reward, done, info = env.step(action)
+            next_state = preprocess_state(next_state)
             
             # Update metrics
             episode_reward += reward
@@ -101,8 +94,8 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
             episode_score += info.get('score', 0)
             episode_max_level = max(episode_max_level, info.get('level', 0))
             
-            # Store transition in replay buffer (use raw observation dictionaries)
-            agent.memory.push(obs, action, reward, next_obs, done, info)
+            # Store transition in replay buffer
+            agent.memory.push(state, action, reward, next_state, done, info)
             
             # Train agent
             losses = agent.train()
@@ -112,9 +105,8 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
                 episode_critic_loss += critic_loss
                 train_steps += 1
             
-            # Update state and observation
+            # Update state
             state = next_state
-            obs = next_obs
         
         # Update exploration rate
         agent.update_epsilon()
@@ -133,12 +125,14 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
         actor_losses.append(episode_actor_loss)
         critic_losses.append(episode_critic_loss)
         # TensorBoard logging
+        '''
         writer.add_scalar('Episode/Reward', episode_reward, episode + 1)
         writer.add_scalar('Episode/Length', episode_length, episode + 1)
         writer.add_scalar('Episode/LinesCleared', episode_lines_cleared, episode + 1)
         writer.add_scalar('Episode/Score', episode_score, episode + 1)
         writer.add_scalar('Episode/MaxLevel', episode_max_level, episode + 1)
-        writer.flush()
+        '''
+        
 
 
         # Print episode summary
@@ -207,19 +201,15 @@ def evaluate_agent(env, agent, num_episodes=10):
         num_episodes: Number of episodes to evaluate
     
     Returns:
-        Tuple of (rewards, scores, lines) lists over evaluation episodes
+        Average reward over evaluation episodes
     """
     eval_rewards = []
-    eval_scores = []
-    eval_lines = []
     
     for ep in range(num_episodes):
-        obs, _ = env.reset()  # Unpack the (obs, info) tuple
-        state = preprocess_state(obs)
+        state = env.reset()
+        state = preprocess_state(state)
         done = False
         episode_reward = 0
-        episode_score = 0
-        episode_lines = 0
         i = 0
 
         while not done and i < env.max_steps:
@@ -230,14 +220,11 @@ def evaluate_agent(env, agent, num_episodes=10):
                 action = action_probs.argmax().item()
             
             # Perform action
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            next_state = preprocess_state(next_obs)
+            next_state, reward, done, info = env.step(action)
+            next_state = preprocess_state(next_state)
 
             # Update metrics
             episode_reward += reward
-            episode_score += info.get('score', 0)
-            episode_lines += info.get('lines_cleared', 0)
             state = next_state
 
             if i % 10 == 0:
@@ -246,17 +233,15 @@ def evaluate_agent(env, agent, num_episodes=10):
             i += 1
         
         eval_rewards.append(episode_reward)
-        eval_scores.append(episode_score)
-        eval_lines.append(episode_lines)
-        logging.info(f"Episode {ep + 1}/{num_episodes} - Reward: {episode_reward:.2f}, Score: {episode_score}, Lines: {episode_lines}")
+        logging.info(f"Episode {ep + 1}/{num_episodes} - Evaluation Reward: {episode_reward:.2f}")
     
-    return eval_rewards, eval_scores, eval_lines
+    return eval_rewards
 
 if __name__ == '__main__':
     # Create environment and agent
     env = TetrisEnv()
-    state_dim = 207  # 200 grid + 7 metadata incl can_hold
-    action_dim = 41  # 40 placement + hold
+    state_dim = 202  # 20x10 grid + 2 scalars
+    action_dim = 8   # 8 possible actions, including no-op
     agent = ActorCriticAgent(state_dim, action_dim)
     
     # Train agent
