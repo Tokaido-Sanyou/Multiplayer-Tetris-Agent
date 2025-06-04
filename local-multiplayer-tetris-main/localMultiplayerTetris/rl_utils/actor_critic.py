@@ -147,16 +147,13 @@ class ActorCriticAgent:
         self.schedule_episodes = schedule_episodes  # total training episodes
         # Episodes over which ε decays to ε_end (first half of training)
         self._eps_decay_episodes = max(1, schedule_episodes // 2)
-        # Pre-compute exponential decay rate so that epsilon reaches (approximately) epsilon_end
-        # after `schedule_episodes` updates: epsilon_t = epsilon_start * decay_rate^t.
-        # decay_rate = (epsilon_end / epsilon_start)^(1 / schedule_episodes)
-        # Handle edge-cases where values could be equal or zero.
+        
+        # Modified epsilon decay to maintain more exploration
         if epsilon_start > 0 and epsilon_end > 0 and epsilon_end < epsilon_start:
-            # Decay only during the first half
-            self._eps_decay_rate = (epsilon_end / epsilon_start) ** (1.0 / self._eps_decay_episodes)
+            # Slower decay rate to maintain exploration
+            self._eps_decay_rate = (epsilon_end / epsilon_start) ** (1.0 / self.schedule_episodes)
         else:
-            # Fallback to a default mild decay if parameters are degenerate
-            self._eps_decay_rate = 0.995
+            self._eps_decay_rate = 0.998  # Slower default decay
         
         # Initialize current epsilon, gamma, and episode count
         self.epsilon = epsilon_start
@@ -164,12 +161,17 @@ class ActorCriticAgent:
         self.current_episode = 0
         self.top_k = top_k_ac
         
+        # Entropy regularization coefficient (increases with episodes to prevent convergence)
+        self.entropy_coef_start = 0.01
+        self.entropy_coef_end = 0.05
+        self.entropy_coef = self.entropy_coef_start
+        
         # Initialize network
         self.network = ActorCritic(state_dim, action_dim)
         
-        # Initialize optimizers
-        self.actor_optimizer = optim.Adam(self.network.actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = optim.Adam(self.network.critic.parameters(), lr=critic_lr)
+        # Initialize optimizers with slightly higher learning rates
+        self.actor_optimizer = optim.Adam(self.network.actor.parameters(), lr=actor_lr * 1.5)
+        self.critic_optimizer = optim.Adam(self.network.critic.parameters(), lr=critic_lr * 1.5)
         
         # Initialize replay buffer
         self.memory = ReplayBuffer(100000)
@@ -186,45 +188,48 @@ class ActorCriticAgent:
     
     def select_action(self, state):  # returns integer in [0,40]
         """
-        Select action using epsilon-greedy policy
+        Select action using epsilon-greedy policy with proper top-K sampling
         Args:
-            state: Dictionary containing:
-                - grid: 20x10 matrix of piece colors
-                - current_piece: 4x4 matrix of current piece
-                - next_piece: 4x4 matrix of next piece
-                - hold_piece: 4x4 matrix of hold piece
+            state: Dictionary containing state information
         Returns:
             Integer (0-40) representing the selected action
         """
-        # Throttle actor to at least 50 ms per action
-        start = time.perf_counter()
-        
-        # exploration (epsilon)
         if np.random.random() < self.epsilon:
-            action = np.random.randint(self.action_dim)
-        else:
-            # exploitation(top k values)
-            with torch.no_grad():
-                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-                action_probs, _ = self.network(state_tensor)
-                top_k_ac, top_k_indices = torch.topk(action_probs, self.top_k)
-                top_k_indices = top_k_indices[0].cpu().numpy()
-                chosen = int(np.random.choice(top_k_indices))
-                # Avoid invalid hold when cannot hold
-                can_hold_flag = bool(state[-1]) if isinstance(state, (list, np.ndarray)) else True
-                if (not can_hold_flag) and chosen == 40:
-                    # pick best non-hold action (probabilities sorted)
-                    sorted_idx = torch.argsort(action_probs[0], descending=True).cpu().numpy()
-                    for idx in sorted_idx:
-                        if idx != 40:
-                            chosen = int(idx)
-                            break
-                action = chosen
-        # Ensure minimum 50 ms per call
-        # elapsed = time.perf_counter() - start
-        # if elapsed < 0.05:
-        #     time.sleep(0.05 - elapsed)
-        return action
+            # During exploration, ensure we sample all rotations
+            if np.random.random() < 0.8:  # 80% chance to try different rotations
+                rot = np.random.randint(4)  # 0-3 rotations
+                col = np.random.randint(10)  # 0-9 columns
+                return rot * 10 + col
+            else:
+                return np.random.randint(self.action_dim)  # Include hold action
+        
+        # Exploitation with proper top-K sampling
+        with torch.no_grad():
+            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+            action_probs, _ = self.network(state_tensor)
+            action_probs = action_probs[0]  # Remove batch dimension
+            
+            # Get top K actions and their probabilities
+            top_k_probs, top_k_indices = torch.topk(action_probs, self.top_k)
+            
+            # Normalize the probabilities of top K actions
+            top_k_probs = torch.softmax(top_k_probs, dim=0)
+            
+            # Sample from top K actions using normalized probabilities
+            chosen_idx = torch.multinomial(top_k_probs, 1).item()
+            chosen_action = top_k_indices[chosen_idx].item()
+            
+            # Handle hold action availability
+            can_hold_flag = bool(state[-1]) if isinstance(state, (list, np.ndarray)) else True
+            if (not can_hold_flag) and chosen_action == 40:
+                # If hold is not available but was chosen, pick the next best action
+                sorted_actions = torch.argsort(action_probs, descending=True)
+                for action in sorted_actions:
+                    if action != 40:
+                        chosen_action = action.item()
+                        break
+            
+            return chosen_action
 
     def select_actions_batch(self, states, eval_mode=False): # Added eval_mode
         """
@@ -283,21 +288,23 @@ class ActorCriticAgent:
                     actions.append(chosen_action)
         return np.array(actions)
 
-    def update_schedules(self, total_completed_episodes): # Renamed from update_epsilon and added total_completed_episodes
-        """Update epsilon and gamma schedules based on total completed episodes."""
-        # --- Exponential epsilon decay ---
-        # ε_t = max(ε_end, ε_start * decay_rate^t)
-        if total_completed_episodes >= self._eps_decay_episodes:
-            # second half: fixed at minimum
-            self.epsilon = self.epsilon_end
-        else:
-            self.epsilon = max(self.epsilon_end,
-                               self.epsilon_start * (self._eps_decay_rate ** total_completed_episodes))
+    def update_schedules(self, total_completed_episodes):
+        """Update epsilon, gamma, and entropy coefficient schedules based on total completed episodes."""
+        # More gradual epsilon decay
+        progress = total_completed_episodes / self.schedule_episodes
         
-        # --- (Optional) linear gamma schedule preserved ---
-        frac = min(1.0, total_completed_episodes / self.schedule_episodes)
-        self.gamma = self.gamma_start + frac * (self.gamma_end - self.gamma_start)
-    
+        # Modified epsilon schedule to maintain exploration
+        if progress < 0.7:  # First 70% of training
+            self.epsilon = self.epsilon_start * (self._eps_decay_rate ** total_completed_episodes)
+        else:  # Last 30% - maintain higher minimum exploration
+            self.epsilon = max(self.epsilon_end * 2, self.epsilon_start * (self._eps_decay_rate ** total_completed_episodes))
+        
+        # Linear gamma schedule
+        self.gamma = self.gamma_start + progress * (self.gamma_end - self.gamma_start)
+        
+        # Increase entropy regularization coefficient over time to prevent convergence
+        self.entropy_coef = self.entropy_coef_start + progress * (self.entropy_coef_end - self.entropy_coef_start)
+
     def train(self):
         """Single training step: update networks if buffer has enough samples"""
         if len(self.memory) < self.batch_size:
@@ -332,7 +339,7 @@ class ActorCriticAgent:
         """
         Update actor and critic networks using replay buffer
         """
-        # Sample batch from replay buffer (sample returns states, actions, rewards, next_states, dones, info, indices, weights)
+        # Sample batch from replay buffer
         sample = self.memory.sample(self.batch_size)
         if sample is None:
             return None
@@ -344,6 +351,7 @@ class ActorCriticAgent:
         rewards = torch.FloatTensor(rewards).to(self.device).unsqueeze(1)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(dones).to(self.device).unsqueeze(1)
+        
         # Extract shared features
         features = self.network.feature_extractor(states)
         next_features = self.network.feature_extractor(next_states)
@@ -364,19 +372,36 @@ class ActorCriticAgent:
         # ---------------- Actor update ---------------- #
         self.actor_optimizer.zero_grad()
         action_probs = self.network.actor(features)
+        
         # Avoid log(0) by clamping
         selected_action_probs = action_probs.gather(1, actions).clamp(min=1e-8)
         log_probs = torch.log(selected_action_probs)
+        
         # Advantage = TD-target − V(s)
         advantages = (targets - state_values).detach()
+        
+        # Policy gradient loss
         actor_loss = -(log_probs * advantages).mean()
-        # Optional entropy regularization to reduce premature convergence/divergence
+        
+        # Enhanced entropy regularization
         entropy = -(action_probs * torch.log(action_probs.clamp(min=1e-8))).sum(dim=1).mean()
-        actor_loss -= 0.01 * entropy  # encourage exploration
-        actor_loss.backward()
+        entropy_loss = -self.entropy_coef * entropy
+        
+        # Add distribution regularization
+        probs_per_rotation = torch.zeros(4, 10).to(self.device)  # 4 rotations, 10 columns
+        for rot in range(4):
+            probs_per_rotation[rot] = action_probs[:, rot*10:(rot+1)*10].mean(dim=0)
+        
+        # Penalize uneven distribution across columns for each rotation
+        distribution_loss = 0.1 * torch.var(probs_per_rotation, dim=1).mean()
+        
+        # Combined loss
+        total_loss = actor_loss + entropy_loss + distribution_loss
+        
+        total_loss.backward()
         nn.utils.clip_grad_norm_(self.network.actor.parameters(), self.gradient_clip)
         self.actor_optimizer.step()
-        # return losses: (actor_loss, critic_loss)
+        
         return actor_loss.item(), critic_loss.item()
 
     # ---------------- Persistence helpers ---------------- #

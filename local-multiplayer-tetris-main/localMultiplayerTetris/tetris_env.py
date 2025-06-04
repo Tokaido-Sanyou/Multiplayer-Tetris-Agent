@@ -29,11 +29,8 @@ class TetrisEnv(gym.Env):
         # account for training without GUI
         self.headless = headless
         # Initialize pygame
-        if not self.headless:
+        if not pygame.get_init():
             pygame.init()
-        else:
-            # Training headless: disable debug logging to file
-            logger.setLevel(logging.WARNING)
         
         # Action space:
         # 0-39 : placement index = rotation*10 + column
@@ -56,8 +53,6 @@ class TetrisEnv(gym.Env):
             'can_hold': spaces.Box(low=0, high=1, shape=(), dtype=np.int8)
         })
         
-        # Initialize game components
-
         # Initialize rendering surface
         if not self.headless:
             # Create a display window for real-time visualization
@@ -66,6 +61,7 @@ class TetrisEnv(gym.Env):
         else:
             # Off-screen surface for headless mode
             self.surface = pygame.Surface((s_width, s_height))
+        
         self.game = None  # Will be initialized in reset()
         self.player = None  # Will be set in reset()
         self.single_player = single_player
@@ -126,14 +122,12 @@ class TetrisEnv(gym.Env):
     
     def _get_reward(self, lines_cleared, game_over, new_positions=None):
         # 1. Line-clear + time penalty
-        bases = {1:10, 2:20, 3:40, 4:80}
+        bases = {1:100, 2:300, 3:700, 4:1500}
         reward = bases.get(lines_cleared, 0) * (self.game.level + 1)
         
-        # reward += -0.01   # small time penalty
-
         # 2. Game-over check
         if game_over:
-            return reward - 20
+            return reward - 500
 
         # 3. Compute features
         grid = create_grid(self.player.locked_positions)
@@ -141,38 +135,133 @@ class TetrisEnv(gym.Env):
             next((r for r in range(20) if grid[r][c] != (0, 0, 0)), 20)
             for c in range(10)
         ]
-        max_height = max(col_heights)  # Only consider the highest column
+        max_height = max(col_heights)
+        min_height = min(col_heights)
+        
+        # Calculate column distribution metrics
+        mean_height = sum(20 - h for h in col_heights) / 10.0
+        height_variance = sum((20 - h - mean_height) ** 2 for h in col_heights) / 10.0
+        height_std_dev = height_variance ** 0.5
+        
+        # Calculate height differences between adjacent columns
+        height_diffs = [abs(col_heights[i] - col_heights[i+1]) for i in range(9)]
+        max_height_diff = max(height_diffs)
+        total_height_diff = sum(height_diffs)
+        
+        # Calculate empty and full column penalties
+        empty_columns = sum(1 for h in col_heights if h == 20)
+        full_columns = sum(1 for h in col_heights if h <= 5)  # Columns that are very high
+        
+        # Calculate holes and bumpiness
+        holes = sum(
+            1 for c in range(10)
+            for r in range(col_heights[c] + 1, 20)
+            if grid[r][c] == (0, 0, 0)
+        )
+        
+        # Height-based penalties (exponential with height)
+        height_penalty = 2.0 * (1.2 ** max_height)  # Base height penalty
+        height_penalty += 1.0 * (1.3 ** (max_height - min_height))  # Penalty for height difference
+        
+        # Strong penalties for uneven distribution
+        distribution_penalty = 15.0 * height_std_dev  # Increased from 8.0
+        distribution_penalty += 5.0 * max_height_diff  # Increased penalty for large gaps between columns
+        distribution_penalty += 4.0 * (empty_columns ** 2)  # Increased quadratic penalty for empty columns
+        distribution_penalty += 4.0 * (full_columns ** 2)  # Increased quadratic penalty for very high columns
+        
+        # Add penalty for extreme height differences between any columns
+        for i in range(10):
+            for j in range(i+1, 10):
+                diff = abs(col_heights[i] - col_heights[j])
+                if diff > 3:  # If height difference is more than 3 blocks
+                    distribution_penalty += 2.0 * (diff - 3) ** 2  # Quadratic penalty for large differences
+        
         curr = {
-            "holes": sum(
-                1 for c in range(10)
-                for r in range(col_heights[c] + 1, 20)
-                if grid[r][c] == (0, 0, 0)
-            ),
-            "max_h": max_height,  # Use max height instead of aggregate height
-            "bump": sum(abs(col_heights[i] - col_heights[i + 1]) for i in range(9)),
+            "holes": holes,
+            "max_h": max_height,
+            "min_h": min_height,
+            "height_diff": total_height_diff,
+            "std_dev": height_std_dev,
+            "empty_cols": empty_columns,
+            "full_cols": full_columns,
+            "mean_h": mean_height
         }
         
-        # 4. Delta-based shaping
+        # Apply penalties
+        reward -= 3.0 * curr["holes"]  # Holes penalty
+        reward -= height_penalty  # Height penalty
+        reward -= distribution_penalty  # Distribution penalties
+        reward -= 1.0 * curr["height_diff"]  # Increased penalty for adjacent height differences
+        
+        # Delta-based shaping
         prev = self.prev_features if hasattr(self, 'prev_features') else None
         if prev:
-            reward += 0.02 * (prev["holes"] - curr["holes"])
-            reward += 0.4 * (prev["max_h"] - curr["max_h"])  # Adjust for max height
-            reward += 0.005 * (prev["bump"] - curr["bump"])
-
-        # 5. Store for next step
+            # Reward improvements
+            reward += 0.5 * (prev["holes"] - curr["holes"])  # Reducing holes
+            reward += 1.0 * (prev["max_h"] - curr["max_h"])  # Reducing maximum height
+            reward += 1.0 * (curr["min_h"] - prev["min_h"])  # Increasing minimum height
+            reward += 1.0 * (prev["height_diff"] - curr["height_diff"])  # Increased reward for reducing height differences
+            
+            # Strong rewards for distribution improvements
+            if curr["std_dev"] < prev["std_dev"]:
+                reward += 6.0 * (prev["std_dev"] - curr["std_dev"])  # Doubled reward for improving distribution
+            if curr["empty_cols"] < prev["empty_cols"]:
+                reward += 4.0 * (prev["empty_cols"] - curr["empty_cols"])  # Doubled reward for using empty columns
+            if curr["full_cols"] < prev["full_cols"]:
+                reward += 4.0 * (prev["full_cols"] - curr["full_cols"])  # Doubled reward for reducing full columns
+            
+            # Extra bonus for reducing height while maintaining good distribution
+            if curr["holes"] == 0 and curr["max_h"] < prev["max_h"]:
+                if curr["std_dev"] < 2.0:  # Very even distribution
+                    reward += 10.0 * (prev["max_h"] - curr["max_h"])  # Doubled bonus for good distribution
+                elif curr["std_dev"] < 3.0:  # Moderately even distribution
+                    reward += 5.0 * (prev["max_h"] - curr["max_h"])
+        
+        # Store current features for next step
         self.prev_features = curr
         
-        # adjacency bonus for newly locked blocks
+        # Position-based incentives for new piece placements
         if new_positions:
-            reward += self._adjacency_reward(new_positions)
-            # height-preservation bonus: no increase in max column height
-            if prev and curr['max_h'] <= prev['max_h']:
-                reward += 0.01
-            # position bonus: reward if highest block of new piece is above previous max height
-            highest_y = min(y for _, y in new_positions)
-            if prev and highest_y < prev['max_h']:
-                reward += 0.01 * (prev['max_h'] - highest_y)
-        return reward + 0.2
+            # Get placement column information
+            piece_cols = set(x for x, _ in new_positions)
+            piece_min_col = min(piece_cols)
+            piece_max_col = max(piece_cols)
+            piece_width = piece_max_col - piece_min_col + 1
+            
+            # Calculate local height metrics for placement area
+            local_heights = col_heights[piece_min_col:piece_max_col+1]
+            local_max_height = max(local_heights) if local_heights else 20
+            
+            # Reward for using more columns
+            col_usage_score = len(piece_cols) / 4.0  # Normalize by typical piece width
+            reward += 3.0 * col_usage_score  # Increased reward for using multiple columns
+            
+            # Strong reward for using columns with below-average height
+            below_avg_cols = sum(1 for c in piece_cols if col_heights[c] > mean_height)
+            reward += 2.0 * below_avg_cols  # Doubled reward for using lower columns
+            
+            # Penalize high placements more severely
+            if local_max_height < 5:  # If placing in top quarter
+                reward -= 6.0 * (5 - local_max_height)  # Increased penalty for high placements
+            
+            # Reward for bridging gaps between columns
+            if piece_width > 1:  # Only for pieces spanning multiple columns
+                height_diff_before = sum(abs(col_heights[i] - col_heights[i+1]) 
+                                       for i in range(piece_min_col, piece_max_col))
+                reward += 2.0 * height_diff_before  # Doubled reward for bridging height differences
+            
+            # Add bonus for placing pieces that improve distribution
+            if piece_width > 1:  # For pieces that span multiple columns
+                # Calculate local height standard deviation before and after placement
+                local_heights_before = [col_heights[i] for i in range(piece_min_col, piece_max_col+1)]
+                mean_before = sum(local_heights_before) / len(local_heights_before)
+                std_dev_before = (sum((h - mean_before) ** 2 for h in local_heights_before) / len(local_heights_before)) ** 0.5
+                
+                # If piece improves local distribution, give bonus
+                if std_dev_before > 2.0:  # Only if there was significant unevenness
+                    reward += 3.0 * std_dev_before  # Reward proportional to how uneven it was
+        
+        return reward
 
     
     def _adjacency_reward(self, positions):
@@ -342,23 +431,30 @@ class TetrisEnv(gym.Env):
         if self.headless:
             # Skip all rendering in headless mode
             return
-        # Pump Pygame events to keep the window responsive
-        pygame.event.pump()
-        # Sync locked blocks into the game grid before drawing
-        self.game.p1_grid = create_grid(self.player.locked_positions)
-        self.game.p2_grid = create_grid(self.game.player2.locked_positions)
-        """Render the game state"""
-        if mode == 'human':
-            self.game.draw()
-            pygame.display.update()
-            # Cap frame rate to 10 FPS (100 ms per step)
-            self.clock.tick(10)
-    
+        
+        try:
+            # Pump Pygame events to keep the window responsive
+            pygame.event.pump()
+            # Sync locked blocks into the game grid before drawing
+            self.game.p1_grid = create_grid(self.player.locked_positions)
+            self.game.p2_grid = create_grid(self.game.player2.locked_positions)
+            """Render the game state"""
+            if mode == 'human':
+                self.game.draw()
+                pygame.display.update()
+                # Cap frame rate to 10 FPS (100 ms per step)
+                self.clock.tick(10)
+        except pygame.error:
+            # If we get a pygame error, try to reinitialize the display
+            if not self.headless:
+                pygame.display.init()
+                self.surface = pygame.display.set_mode((s_width, s_height))
+                pygame.display.set_caption("Tetris RL")
+
     def close(self):
         """Clean up resources"""
         if self.game is not None:
             self.game = None
         if self.surface is not None:
             self.surface = None
-        if not self.headless:
-            pygame.quit()
+        # Don't quit Pygame here, just clean up our resources

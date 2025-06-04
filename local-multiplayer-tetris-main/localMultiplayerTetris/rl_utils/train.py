@@ -197,60 +197,51 @@ def train_actor_critic(env, agent, num_episodes, save_interval=100, eval_interva
     # Close TensorBoard writer
     writer.close()
 
-def evaluate_agent(env, agent, num_episodes=10):
+def evaluate_agent(env, agent, num_episodes=5):
     """
-    Evaluate agent's performance
-    
+    Evaluate agent performance over several episodes
     Args:
         env: TetrisEnv instance
         agent: ActorCriticAgent instance
-        num_episodes: Number of episodes to evaluate
-    
+        num_episodes: Number of episodes to evaluate over
     Returns:
-        Tuple of (rewards, scores, lines) lists over evaluation episodes
+        Tuple of (rewards, scores, lines_cleared) lists
     """
-    eval_rewards = []
-    eval_scores = []
-    eval_lines = []
+    rewards = []
+    scores = []
+    lines = []
     
-    for ep in range(num_episodes):
-        obs, _ = env.reset()  # Unpack the (obs, info) tuple
-        state = preprocess_state(obs)
-        done = False
-        episode_reward = 0
-        episode_score = 0
-        episode_lines = 0
-        i = 0
-
-        while not done and i < env.max_steps:
-            # Select action without exploration
-            with torch.no_grad():
-                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(agent.device)
-                action_probs, _ = agent.network(state_tensor)
-                action = action_probs.argmax().item()
+    # Store original epsilon and set to 0 for deterministic evaluation
+    original_epsilon = agent.epsilon
+    agent.epsilon = 0.0
+    
+    try:
+        for i in range(num_episodes):
+            obs, _ = env.reset()
+            state = preprocess_state(obs)
+            done = False
+            total_reward = 0
+            total_score = 0
+            total_lines = 0
             
-            # Perform action
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            next_state = preprocess_state(next_obs)
-
-            # Update metrics
-            episode_reward += reward
-            episode_score += info.get('score', 0)
-            episode_lines += info.get('lines_cleared', 0)
-            state = next_state
-
-            if i % 10 == 0:
-                logging.info(f"Episode {ep + 1}/{num_episodes} - Step {i}")
-
-            i += 1
-        
-        eval_rewards.append(episode_reward)
-        eval_scores.append(episode_score)
-        eval_lines.append(episode_lines)
-        logging.info(f"Episode {ep + 1}/{num_episodes} - Reward: {episode_reward:.2f}, Score: {episode_score}, Lines: {episode_lines}")
+            while not done:
+                with torch.no_grad():
+                    action = agent.select_action(state)
+                    next_obs, reward, terminated, truncated, info = env.step(action)
+                    done = terminated or truncated
+                    state = preprocess_state(next_obs)
+                    total_reward += reward
+                    total_score += info.get('score', 0)
+                    total_lines += info.get('lines_cleared', 0)
+            
+            rewards.append(total_reward)
+            scores.append(total_score)
+            lines.append(total_lines)
+    finally:
+        # Restore original epsilon
+        agent.epsilon = original_epsilon
     
-    return eval_rewards, eval_scores, eval_lines
+    return rewards, scores, lines
 
 if __name__ == '__main__':
     # Create environment and agent

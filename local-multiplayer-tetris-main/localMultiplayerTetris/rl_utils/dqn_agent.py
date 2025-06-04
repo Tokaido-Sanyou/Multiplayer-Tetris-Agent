@@ -15,14 +15,11 @@ class DQN(nn.Module):
     Total input dimension: 202
     
     Output Structure:
-    - 7 Q-values corresponding to actions:
-        0: Move Left (action_handler.py: move_left)
-        1: Move Right (action_handler.py: move_right)
-        2: Move Down (action_handler.py: move_down)
-        3: Rotate Clockwise (action_handler.py: rotate_cw)
-        4: Rotate Counter-clockwise (action_handler.py: rotate_ccw)
-        5: Hard Drop (action_handler.py: hard_drop)
-        6: Hold Piece (action_handler.py: hold_piece)
+    - 41 Q-values corresponding to actions:
+        0-39: Placement actions (rotation * 10 + column)
+            rotation ∈ [0,3] for 4 possible rotations
+            column ∈ [0,9] for 10 possible columns
+        40: Hold piece
     
     Related Files:
     - tetris_env.py: Defines action space and state structure
@@ -35,12 +32,12 @@ class DQN(nn.Module):
         Initialize DQN network
         Args:
             input_dim: Dimension of input state (202)
-            output_dim: Number of possible actions (7)
+            output_dim: Number of possible actions (41)
         """
         super(DQN, self).__init__()
         
-        # CNN for grid processing (20x10 input)
-        self.grid_conv = nn.Sequential(
+        # CNN for processing the grid
+        self.conv = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
@@ -49,48 +46,49 @@ class DQN(nn.Module):
             nn.ReLU()
         )
         
-        # Scalar embedding for next and hold pieces
-        self.piece_embed = nn.Sequential(
-            nn.Linear(2, 32),  # next + hold scalar IDs
-            nn.ReLU(),
-            nn.Linear(32, 32),
-            nn.ReLU()
-        )
+        # Piece embedding
+        self.piece_embedding = nn.Embedding(8, 32)  # 8 = 7 piece types + 1 for empty
         
-        # Combined network
-        self.combined = nn.Sequential(
-            nn.Linear(64 * 20 * 10 + 32, 512),
+        # Calculate flattened dimensions
+        self.conv_out_size = 64 * 20 * 10  # channels * height * width
+        self.fc_input_size = self.conv_out_size + 32  # conv output + piece embedding
+        
+        # Fully connected layers
+        self.fc = nn.Sequential(
+            nn.Linear(self.fc_input_size, 512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, output_dim)
         )
     
-    def forward(self, x):
+    def forward(self, state):
         """
         Forward pass through the network
         Args:
-            x: Input tensor of shape (batch_size, 202)
+            state: Dictionary containing:
+                - grid: 20x10 matrix of piece colors
+                - current_shape: scalar ID of the current piece
         Returns:
-            Q-values for each action of shape (batch_size, 7)
+            Q-values for each action of shape (batch_size, 41)
         """
-        # Reshape input
-        batch_size = x.size(0)
-        grid = x[:, :200].view(batch_size, 1, 20, 10)  # Grid: 20x10
-        pieces = x[:, 200:]  # Scalars: next_piece + hold_piece
+        # Extract components from state
+        grid = state['grid'].float().unsqueeze(1)  # Add channel dimension
+        current_piece = state['current_shape'].long()
         
-        # Process grid with CNN
-        grid_features = self.grid_conv(grid)
-        grid_features = grid_features.view(batch_size, -1)
+        # Process grid through CNN
+        conv_out = self.conv(grid)
+        conv_out = conv_out.view(-1, self.conv_out_size)
         
-        # Process piece scalars with embedding
-        piece_features = self.piece_embed(pieces)
+        # Process current piece
+        piece_out = self.piece_embedding(current_piece)
         
         # Combine features
-        combined = torch.cat([grid_features, piece_features], dim=1)
+        combined = torch.cat([conv_out, piece_out], dim=1)
         
-        # Output Q-values
-        return self.combined(combined)
+        # Final layers
+        q_values = self.fc(combined)
+        return q_values
 
 class DQNAgent:
     """
@@ -102,13 +100,12 @@ class DQNAgent:
     - Hold piece: scalar ID
     
     Action Space (from tetris_env.py):
-    - 0: Move Left
-    - 1: Move Right
-    - 2: Move Down
-    - 3: Rotate Clockwise
-    - 4: Rotate Counter-clockwise
-    - 5: Hard Drop
-    - 6: Hold Piece
+    - 0-39: Placement actions (rotation * 10 + column)
+        rotation ∈ [0,3] for 4 possible rotations
+        column ∈ [0,9] for 10 possible columns
+    - 40: Hold piece
+    
+    Total actions: 41 (40 placement actions + 1 hold action)
     
     Related Files:
     - tetris_env.py: Defines action space and state structure
@@ -116,25 +113,27 @@ class DQNAgent:
     - game.py: Contains game state and piece movement logic
     - piece.py: Defines piece shapes and rotation logic
     """
-    def __init__(self, state_dim, action_dim, learning_rate=1e-4, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, top_k_ac=3):
+    def __init__(self, state_dim, action_dim=41, learning_rate=1e-4, gamma=0.99, 
+                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, top_k_ac=3):
         """
         Initialize DQN agent
         Args:
-            state_dim: Dimension of state space (202)
-            action_dim: Number of possible actions (7)
+            state_dim: Dimension of state space
+            action_dim: Number of possible actions (default 41: 4 rotations × 10 columns + hold)
             learning_rate: Learning rate for optimizer
             gamma: Discount factor
             epsilon: Initial exploration rate
             epsilon_min: Minimum exploration rate
             epsilon_decay: Decay rate for exploration
+            top_k_ac: Number of top actions to consider for sampling
         """
         self.state_dim = state_dim
-        self.action_dim = action_dim
+        self.action_dim = action_dim  # Should be 41 (4 rotations × 10 columns + hold)
         self.gamma = gamma
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
-        self.top_k = top_k_ac
+        self.top_k = min(top_k_ac, action_dim)  # Ensure top_k doesn't exceed action space
         
         # Initialize networks
         self.policy_net = DQN(state_dim, action_dim)
@@ -145,7 +144,7 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=learning_rate)
         
         # Initialize replay buffer
-        self.memory = ReplayBuffer(100000)  # Increased buffer size
+        self.memory = ReplayBuffer(100000)
         
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -163,16 +162,18 @@ class DQNAgent:
         Args:
             state: Dictionary containing:
                 - grid: 20x10 matrix of piece colors
-                - next_piece: scalar ID
-                - hold_piece: scalar ID
+                - current_shape: scalar ID of the current piece
         Returns:
-            Integer (0-6) representing the selected action
+            Integer (0-40) representing the selected action
         """
         if np.random.random() < self.epsilon:
             return np.random.randint(self.action_dim)
         
         with torch.no_grad():
-            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+            state = {
+                'grid': torch.FloatTensor(state['grid']).unsqueeze(0).to(self.device),
+                'current_shape': torch.LongTensor([state['current_shape']]).to(self.device)
+            }
             q_values = self.policy_net(state)
             top_k_q_values, top_k_indices = torch.topk(q_values, self.top_k)  # watch for batching, debug shapes for later
             return int(np.random.choice(top_k_indices.cpu().numpy()))
@@ -205,10 +206,16 @@ class DQNAgent:
         states, actions, rewards, next_states, dones, info, indices, weights = batch
         
         # Move tensors to device
-        states = states.to(self.device)
+        states = {
+            'grid': states['grid'].to(self.device),
+            'current_shape': states['current_shape'].to(self.device)
+        }
         actions = actions.to(self.device)
         rewards = rewards.to(self.device)
-        next_states = next_states.to(self.device)
+        next_states = {
+            'grid': next_states['grid'].to(self.device),
+            'current_shape': next_states['current_shape'].to(self.device)
+        }
         dones = dones.to(self.device)
         weights = weights.to(self.device)
         

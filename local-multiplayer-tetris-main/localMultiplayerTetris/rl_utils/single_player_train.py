@@ -31,7 +31,7 @@ def _configure_logging(verbose: bool=False):
 # Call early so rest of module uses it
 _configure_logging(verbose='--verbose' in sys.argv)
 
-def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False):
+def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50, visualize=True, checkpoint=None, no_eval=False, verbose=False, top_k=1):
     """
     Train an agent as player 1 in the Tetris environment
     
@@ -43,6 +43,7 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
         checkpoint: Path to checkpoint file to load
         no_eval: Whether to disable evaluation during training
         verbose: Enable per-step logging
+        top_k: Number of top actions to sample from (default 1 for deterministic best action)
     """
     # Set up TensorBoard writer
     writer = SummaryWriter(log_dir='logs/tensorboard')
@@ -60,7 +61,8 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
             gamma_end=0.99,
             epsilon_start=1.0,
             epsilon_end=0.01,
-            schedule_episodes=num_episodes
+            schedule_episodes=num_episodes,
+            top_k_ac=top_k
         )
         print("Using device:", agent.device)
         if checkpoint:
@@ -226,8 +228,12 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                 if (episode + 1) % eval_interval == 0 and not no_eval:
                     try:
                         logging.info(f"Evaluating agent at episode {episode + 1}...")
+                        # Create a separate evaluation environment
+                        eval_env = TetrisEnv(single_player=True, headless=not visualize)
                         # evaluate_agent now returns (rewards, scores, lines)
-                        eval_rewards, eval_scores, eval_lines = evaluate_agent(env, agent)
+                        eval_rewards, eval_scores, eval_lines = evaluate_agent(eval_env, agent)
+                        eval_env.close()  # Clean up eval environment
+                        
                         r_avg, r_std, r_max = np.mean(eval_rewards), np.std(eval_rewards), np.max(eval_rewards)
                         s_avg, s_std, s_max = np.mean(eval_scores), np.std(eval_scores), np.max(eval_scores)
                         l_max = np.max(eval_lines)
@@ -249,6 +255,10 @@ def train_single_player(num_episodes=10000, save_interval=100, eval_interval=50,
                         logging.info("")
                     except Exception as e:
                         logging.error(f"Error during evaluation: {str(e)}")
+                    finally:
+                        # Reset the training environment after evaluation
+                        obs, _ = env.reset()
+                        state = preprocess_state(obs)
                 
             except Exception as e:
                 logging.error(f"Error during episode {episode + 1}: {str(e)}")
@@ -289,6 +299,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-eval', action='store_true', help='Disable evaluation during training')
     parser.add_argument('--verbose', action='store_true', help='Enable per-step logging')
     parser.add_argument('--profile', action='store_true', help='Enable profiling')
+    parser.add_argument('--top-k', type=int, default=1, help='Number of top actions to sample from (default 1 for deterministic best action)')
     args = parser.parse_args()
 
     profiler = cProfile.Profile() if args.profile else None
@@ -365,7 +376,8 @@ if __name__ == '__main__':
                 visualize=args.visualize,
                 checkpoint=args.checkpoint,
                 no_eval=args.no_eval,
-                verbose=args.verbose
+                verbose=args.verbose,
+                top_k=args.top_k
             )
     except KeyboardInterrupt:
         print("Training interrupted by user")
