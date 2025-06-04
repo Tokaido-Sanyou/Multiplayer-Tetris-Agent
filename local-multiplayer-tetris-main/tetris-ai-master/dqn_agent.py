@@ -1,8 +1,29 @@
-from keras.models import Sequential, load_model
-from keras.layers import Dense
-from collections import deque
+import tensorflow as tf
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Dense, InputLayer
+from tensorflow.keras.mixed_precision import Policy
+from tensorflow.keras.utils import register_keras_serializable, get_custom_objects
 import numpy as np
 import random
+from collections import deque
+
+# Stub missing Policy.deserialize for legacy model loading
+Policy.deserialize = classmethod(lambda cls, identifier: cls(identifier))
+
+# Register DTypePolicy for legacy model loading
+@register_keras_serializable(package='keras', name='DTypePolicy')
+class DTypePolicy(Policy):
+    """Alias for Keras Policy to load legacy dtype policies"""
+    pass
+get_custom_objects()['DTypePolicy'] = DTypePolicy
+
+# Patch InputLayer.from_config to drop unsupported 'batch_shape'
+_orig_input_from_config = InputLayer.from_config
+@classmethod
+def _patched_from_config(cls, config):
+    config.pop('batch_shape', None)
+    return _orig_input_from_config(config)
+InputLayer.from_config = _patched_from_config
 
 # Deep Q Learning Agent + Maximin
 #
@@ -28,7 +49,7 @@ class DQNAgent:
         loss (obj): Loss function
         optimizer (obj): Optimizer used
         replay_start_size: Minimum size needed to train
-        modelFile: Previously trained model file path to load (arguments such as activations will be ignored)
+        modelFile (str): Path to a pre-trained model file
     '''
 
     def __init__(self, state_size, mem_size=10000, discount=0.95,
@@ -64,10 +85,13 @@ class DQNAgent:
             replay_start_size = mem_size / 2
         self.replay_start_size = replay_start_size
 
-        # load an existing model
-        if modelFile is not None:
-            self.model = load_model(modelFile)
-        # create a new model
+        # load pretrained model with legacy dtype policy if provided
+        if modelFile:
+            self.model = load_model(
+                modelFile,
+                custom_objects={'DTypePolicy': DTypePolicy},
+                compile=False
+            )
         else:
             self.model = self._build_model()
 

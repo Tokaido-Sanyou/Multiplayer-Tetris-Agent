@@ -214,6 +214,9 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
     Train an agent using vectorized environments.
     """
     writer = SummaryWriter(log_dir='logs/vectorized_tensorboard')
+
+    # Stub missing Policy.deserialize for legacy model loading
+    Policy.deserialize = classmethod(lambda cls, identifier: cls(identifier))
     
     # Create vectorized environments
     # Important: Each environment in AsyncVectorEnv runs in a separate process,
@@ -237,7 +240,6 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
         action_dim,
         schedule_episodes=num_episodes # Epsilon and gamma scheduling
     )
-    logger.info(f"Using device: {agent.device}")
 
     if checkpoint:
         try:
@@ -245,6 +247,10 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
             logger.info(f"Loaded checkpoint from {checkpoint}")
         except Exception as e:
             logger.error(f"Error loading checkpoint: {e}")
+    else:
+        logger.info("No checkpoint provided, starting training from scratch.")
+
+    logger.info(f"Using device: {agent.device}")
 
     os.makedirs('checkpoints_vectorized', exist_ok=True)
 

@@ -16,6 +16,13 @@ import argparse
 import importlib.util
 
 import numpy as np
+import tensorflow as tf
+from tensorflow.keras.utils import get_custom_objects
+
+from dqn_agent import DQNAgent, DTypePolicy  # type: ignore
+
+# Workaround for legacy DTypePolicy in saved models
+get_custom_objects()['DTypePolicy'] = DTypePolicy
 
 # Ensure tetris-ai-master is on the path ---------------------------------------------------
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,9 +35,6 @@ if not os.path.isdir(TAI_DIR):
 
 if os.path.isdir(TAI_DIR) and TAI_DIR not in sys.path:
     sys.path.append(TAI_DIR)
-
-# Lazy-import – will fail early if keras/tensorflow is missing
-from dqn_agent import DQNAgent  # type: ignore
 
 from .tetris_env import TetrisEnv
 from .dqn_adapter import enumerate_next_states
@@ -48,7 +52,9 @@ def main():
 
     # ------------------------------------------------------------------
     env = TetrisEnv(single_player=True, headless=args.headless)
-    agent = DQNAgent(state_size=4, modelFile=args.model)
+    # Init agent and load pretrained Keras model bypassing internal loader
+    agent = DQNAgent(state_size=4)
+    agent.model = tf.keras.models.load_model(args.model, compile=False)
 
     obs, _ = env.reset()
     done = False
