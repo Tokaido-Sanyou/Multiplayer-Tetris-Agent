@@ -1,0 +1,20 @@
+2025-06-04 03:23:07,483 INFO:Initialized True Multiplayer Tetris Environment
+2025-06-04 03:23:07,486 INFO:Initialized Multiplayer AIRL with device: cpu
+2025-06-04 03:23:07,567 INFO:Initialized True Multiplayer Tetris Environment
+2025-06-04 03:23:07,567 INFO:Initialized visualized multiplayer trainer
+2025-06-04 03:23:07,568 INFO:\U0001f3ac Starting visualized training for 5 episodes
+2025-06-04 03:23:07,569 INFO:\U0001f3ae Starting visualized episode 1
+2025-06-04 03:23:12,402 INFO:Player 1 eliminated at step 16
+2025-06-04 03:23:14,299 INFO:Player 2 eliminated at step 22
+2025-06-04 03:23:16,612 INFO:\U0001f3ae Starting visualized episode 2
+2025-06-04 03:23:22,322 INFO:Player 2 eliminated at step 19
+2025-06-04 03:23:22,957 INFO:Player 1 eliminated at step 21
+2025-06-04 03:23:25,269 INFO:\U0001f3ae Starting visualized episode 3
+2025-06-04 03:23:32,233 INFO:Player 2 eliminated at step 23
+2025-06-04 03:23:32,550 INFO:Player 1 eliminated at step 24
+2025-06-04 03:23:34,866 INFO:\U0001f3ae Starting visualized episode 4
+2025-06-04 03:23:40,567 INFO:Player 2 eliminated at step 19
+2025-06-04 03:23:41,832 INFO:Player 1 eliminated at step 23
+2025-06-04 03:23:44,144 INFO:\U0001f3ae Starting visualized episode 5
+2025-06-04 03:23:49,519 INFO:Player 1 eliminated at step 18
+2025-06-04 03:23:51,095 INFO:Player 2 eliminated at step 23
