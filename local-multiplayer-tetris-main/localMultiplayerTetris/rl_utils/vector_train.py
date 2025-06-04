@@ -215,9 +215,6 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
     """
     writer = SummaryWriter(log_dir='logs/vectorized_tensorboard')
 
-    # Stub missing Policy.deserialize for legacy model loading
-    Policy.deserialize = classmethod(lambda cls, identifier: cls(identifier))
-    
     # Create vectorized environments
     # Important: Each environment in AsyncVectorEnv runs in a separate process,
     # so they need to be picklable. Ensure TetrisEnv and its components are.
