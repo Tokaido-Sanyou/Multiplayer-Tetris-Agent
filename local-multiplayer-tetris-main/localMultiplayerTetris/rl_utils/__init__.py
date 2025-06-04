@@ -2,14 +2,14 @@
 Reinforcement Learning utilities for Tetris
 """
 
-from .train import train_actor_critic, preprocess_state, evaluate_agent
-from .actor_critic import ActorCriticAgent
+from .train import train_single_player, preprocess_state, evaluate_agent
+from .dqn_new import DQNAgent
 from .replay_buffer import ReplayBuffer
 
 __all__ = [
-    'train_actor_critic',
+    'train_single_player',
     'preprocess_state',
     'evaluate_agent',
-    'ActorCriticAgent',
+    'DQNAgent',
     'ReplayBuffer'
 ] 

@@ -1,0 +1,317 @@
+2025-06-03 20:33:04,896 - INFO - Episode 1/10000
+2025-06-03 20:33:04,897 - INFO - Reward: -6.80
+2025-06-03 20:33:04,897 - INFO - Score: 0
+2025-06-03 20:33:04,897 - INFO - Lines Cleared: 0
+2025-06-03 20:33:04,897 - INFO - Max Level: 1
+2025-06-03 20:33:04,897 - INFO - Episode Length: 30
+2025-06-03 20:33:04,897 - INFO - Pieces Placed: 30
+2025-06-03 20:33:04,897 - INFO - Epsilon: 0.995
+2025-06-03 20:33:04,897 - INFO - Loss: 0.0000
+2025-06-03 20:33:04,897 - INFO - 
+2025-06-03 20:33:06,816 - INFO - Episode 2/10000
+2025-06-03 20:33:06,816 - INFO - Reward: -19.44
+2025-06-03 20:33:06,817 - INFO - Score: 0
+2025-06-03 20:33:06,817 - INFO - Lines Cleared: 0
+2025-06-03 20:33:06,817 - INFO - Max Level: 1
+2025-06-03 20:33:06,817 - INFO - Episode Length: 19
+2025-06-03 20:33:06,817 - INFO - Pieces Placed: 18
+2025-06-03 20:33:06,817 - INFO - Epsilon: 0.990
+2025-06-03 20:33:06,817 - INFO - Loss: 0.0000
+2025-06-03 20:33:06,817 - INFO - 
+2025-06-03 20:33:08,507 - ERROR - Error during episode 3 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (65,) + inhomogeneous part.
+2025-06-03 20:33:08,507 - INFO - Episode 3/10000
+2025-06-03 20:33:08,507 - INFO - Reward: -12.16
+2025-06-03 20:33:08,507 - INFO - Score: 0
+2025-06-03 20:33:08,507 - INFO - Lines Cleared: 0
+2025-06-03 20:33:08,507 - INFO - Max Level: 1
+2025-06-03 20:33:08,507 - INFO - Episode Length: 16
+2025-06-03 20:33:08,507 - INFO - Pieces Placed: 13
+2025-06-03 20:33:08,507 - INFO - Epsilon: 0.985
+2025-06-03 20:33:08,507 - INFO - Loss: 20.3196
+2025-06-03 20:33:08,507 - INFO - 
+2025-06-03 20:33:08,608 - ERROR - Error during episode 4 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (66,) + inhomogeneous part.
+2025-06-03 20:33:08,608 - INFO - Episode 4/10000
+2025-06-03 20:33:08,608 - INFO - Reward: 0.20
+2025-06-03 20:33:08,608 - INFO - Score: 0
+2025-06-03 20:33:08,608 - INFO - Lines Cleared: 0
+2025-06-03 20:33:08,608 - INFO - Max Level: 1
+2025-06-03 20:33:08,608 - INFO - Episode Length: 1
+2025-06-03 20:33:08,608 - INFO - Pieces Placed: 1
+2025-06-03 20:33:08,608 - INFO - Epsilon: 0.980
+2025-06-03 20:33:08,608 - INFO - Loss: 0.0000
+2025-06-03 20:33:08,608 - INFO - 
+2025-06-03 20:33:08,709 - ERROR - Error during episode 5 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (67,) + inhomogeneous part.
+2025-06-03 20:33:08,709 - INFO - Episode 5/10000
+2025-06-03 20:33:08,709 - INFO - Reward: 0.20
+2025-06-03 20:33:08,709 - INFO - Score: 0
+2025-06-03 20:33:08,709 - INFO - Lines Cleared: 0
+2025-06-03 20:33:08,709 - INFO - Max Level: 1
+2025-06-03 20:33:08,709 - INFO - Episode Length: 1
+2025-06-03 20:33:08,709 - INFO - Pieces Placed: 1
+2025-06-03 20:33:08,709 - INFO - Epsilon: 0.975
+2025-06-03 20:33:08,709 - INFO - Loss: 0.0000
+2025-06-03 20:33:08,709 - INFO - 
+2025-06-03 20:33:08,810 - ERROR - Error during episode 6 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (68,) + inhomogeneous part.
+2025-06-03 20:33:08,811 - INFO - Episode 6/10000
+2025-06-03 20:33:08,811 - INFO - Reward: 0.20
+2025-06-03 20:33:08,811 - INFO - Score: 0
+2025-06-03 20:33:08,811 - INFO - Lines Cleared: 0
+2025-06-03 20:33:08,811 - INFO - Max Level: 1
+2025-06-03 20:33:08,811 - INFO - Episode Length: 1
+2025-06-03 20:33:08,811 - INFO - Pieces Placed: 1
+2025-06-03 20:33:08,811 - INFO - Epsilon: 0.970
+2025-06-03 20:33:08,811 - INFO - Loss: 0.0000
+2025-06-03 20:33:08,811 - INFO - 
+2025-06-03 20:33:08,818 - ERROR - Error during episode 7 step: a must be 1-dimensional
+2025-06-03 20:33:08,818 - INFO - Episode 7/10000
+2025-06-03 20:33:08,818 - INFO - Reward: 0.00
+2025-06-03 20:33:08,819 - INFO - Score: 0
+2025-06-03 20:33:08,819 - INFO - Lines Cleared: 0
+2025-06-03 20:33:08,819 - INFO - Max Level: 0
+2025-06-03 20:33:08,819 - INFO - Episode Length: 0
+2025-06-03 20:33:08,819 - INFO - Pieces Placed: 0
+2025-06-03 20:33:08,819 - INFO - Epsilon: 0.966
+2025-06-03 20:33:08,819 - INFO - Loss: 0.0000
+2025-06-03 20:33:08,819 - INFO - 
+2025-06-03 20:33:08,822 - ERROR - Error during episode 8 step: a must be 1-dimensional
+2025-06-03 20:33:08,822 - INFO - Episode 8/10000
+2025-06-03 20:33:08,822 - INFO - Reward: 0.00
+2025-06-03 20:33:08,822 - INFO - Score: 0
+2025-06-03 20:33:08,822 - INFO - Lines Cleared: 0
+2025-06-03 20:33:08,822 - INFO - Max Level: 0
+2025-06-03 20:33:08,822 - INFO - Episode Length: 0
+2025-06-03 20:33:08,822 - INFO - Pieces Placed: 0
+2025-06-03 20:33:08,822 - INFO - Epsilon: 0.961
+2025-06-03 20:33:08,822 - INFO - Loss: 0.0000
+2025-06-03 20:33:08,822 - INFO - 
+2025-06-03 20:33:08,910 - ERROR - Error during episode 9 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (69,) + inhomogeneous part.
+2025-06-03 20:33:08,911 - INFO - Episode 9/10000
+2025-06-03 20:33:08,911 - INFO - Reward: 0.20
+2025-06-03 20:33:08,911 - INFO - Score: 0
+2025-06-03 20:33:08,911 - INFO - Lines Cleared: 0
+2025-06-03 20:33:08,911 - INFO - Max Level: 1
+2025-06-03 20:33:08,911 - INFO - Episode Length: 1
+2025-06-03 20:33:08,911 - INFO - Pieces Placed: 1
+2025-06-03 20:33:08,911 - INFO - Epsilon: 0.956
+2025-06-03 20:33:08,911 - INFO - Loss: 0.0000
+2025-06-03 20:33:08,911 - INFO - 
+2025-06-03 20:33:09,012 - ERROR - Error during episode 10 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (70,) + inhomogeneous part.
+2025-06-03 20:33:09,012 - INFO - Episode 10/10000
+2025-06-03 20:33:09,012 - INFO - Reward: 0.20
+2025-06-03 20:33:09,012 - INFO - Score: 0
+2025-06-03 20:33:09,012 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,012 - INFO - Max Level: 1
+2025-06-03 20:33:09,012 - INFO - Episode Length: 1
+2025-06-03 20:33:09,012 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,012 - INFO - Epsilon: 0.951
+2025-06-03 20:33:09,012 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,013 - INFO - 
+2025-06-03 20:33:09,112 - ERROR - Error during episode 11 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (71,) + inhomogeneous part.
+2025-06-03 20:33:09,112 - INFO - Episode 11/10000
+2025-06-03 20:33:09,113 - INFO - Reward: 0.20
+2025-06-03 20:33:09,113 - INFO - Score: 0
+2025-06-03 20:33:09,113 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,113 - INFO - Max Level: 1
+2025-06-03 20:33:09,113 - INFO - Episode Length: 1
+2025-06-03 20:33:09,113 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,113 - INFO - Epsilon: 0.946
+2025-06-03 20:33:09,113 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,113 - INFO - 
+2025-06-03 20:33:09,213 - ERROR - Error during episode 12 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (72,) + inhomogeneous part.
+2025-06-03 20:33:09,213 - INFO - Episode 12/10000
+2025-06-03 20:33:09,213 - INFO - Reward: 0.20
+2025-06-03 20:33:09,213 - INFO - Score: 0
+2025-06-03 20:33:09,213 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,214 - INFO - Max Level: 1
+2025-06-03 20:33:09,214 - INFO - Episode Length: 1
+2025-06-03 20:33:09,214 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,214 - INFO - Epsilon: 0.942
+2025-06-03 20:33:09,214 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,214 - INFO - 
+2025-06-03 20:33:09,315 - ERROR - Error during episode 13 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (73,) + inhomogeneous part.
+2025-06-03 20:33:09,315 - INFO - Episode 13/10000
+2025-06-03 20:33:09,315 - INFO - Reward: 0.20
+2025-06-03 20:33:09,315 - INFO - Score: 0
+2025-06-03 20:33:09,315 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,315 - INFO - Max Level: 1
+2025-06-03 20:33:09,316 - INFO - Episode Length: 1
+2025-06-03 20:33:09,316 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,316 - INFO - Epsilon: 0.937
+2025-06-03 20:33:09,316 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,316 - INFO - 
+2025-06-03 20:33:09,415 - ERROR - Error during episode 14 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (74,) + inhomogeneous part.
+2025-06-03 20:33:09,415 - INFO - Episode 14/10000
+2025-06-03 20:33:09,415 - INFO - Reward: 0.20
+2025-06-03 20:33:09,416 - INFO - Score: 0
+2025-06-03 20:33:09,416 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,416 - INFO - Max Level: 1
+2025-06-03 20:33:09,416 - INFO - Episode Length: 1
+2025-06-03 20:33:09,416 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,416 - INFO - Epsilon: 0.932
+2025-06-03 20:33:09,416 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,416 - INFO - 
+2025-06-03 20:33:09,516 - ERROR - Error during episode 15 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (75,) + inhomogeneous part.
+2025-06-03 20:33:09,516 - INFO - Episode 15/10000
+2025-06-03 20:33:09,516 - INFO - Reward: 0.20
+2025-06-03 20:33:09,516 - INFO - Score: 0
+2025-06-03 20:33:09,516 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,516 - INFO - Max Level: 1
+2025-06-03 20:33:09,516 - INFO - Episode Length: 1
+2025-06-03 20:33:09,516 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,516 - INFO - Epsilon: 0.928
+2025-06-03 20:33:09,517 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,517 - INFO - 
+2025-06-03 20:33:09,616 - ERROR - Error during episode 16 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (76,) + inhomogeneous part.
+2025-06-03 20:33:09,617 - INFO - Episode 16/10000
+2025-06-03 20:33:09,617 - INFO - Reward: 0.20
+2025-06-03 20:33:09,617 - INFO - Score: 0
+2025-06-03 20:33:09,617 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,617 - INFO - Max Level: 1
+2025-06-03 20:33:09,617 - INFO - Episode Length: 1
+2025-06-03 20:33:09,617 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,617 - INFO - Epsilon: 0.923
+2025-06-03 20:33:09,617 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,617 - INFO - 
+2025-06-03 20:33:09,718 - ERROR - Error during episode 17 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (77,) + inhomogeneous part.
+2025-06-03 20:33:09,718 - INFO - Episode 17/10000
+2025-06-03 20:33:09,718 - INFO - Reward: 0.20
+2025-06-03 20:33:09,718 - INFO - Score: 0
+2025-06-03 20:33:09,718 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,718 - INFO - Max Level: 1
+2025-06-03 20:33:09,718 - INFO - Episode Length: 1
+2025-06-03 20:33:09,718 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,718 - INFO - Epsilon: 0.918
+2025-06-03 20:33:09,718 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,718 - INFO - 
+2025-06-03 20:33:09,818 - ERROR - Error during episode 18 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (78,) + inhomogeneous part.
+2025-06-03 20:33:09,819 - INFO - Episode 18/10000
+2025-06-03 20:33:09,819 - INFO - Reward: 0.20
+2025-06-03 20:33:09,819 - INFO - Score: 0
+2025-06-03 20:33:09,819 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,819 - INFO - Max Level: 1
+2025-06-03 20:33:09,819 - INFO - Episode Length: 1
+2025-06-03 20:33:09,819 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,819 - INFO - Epsilon: 0.914
+2025-06-03 20:33:09,819 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,819 - INFO - 
+2025-06-03 20:33:09,920 - ERROR - Error during episode 19 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (79,) + inhomogeneous part.
+2025-06-03 20:33:09,920 - INFO - Episode 19/10000
+2025-06-03 20:33:09,920 - INFO - Reward: 0.20
+2025-06-03 20:33:09,920 - INFO - Score: 0
+2025-06-03 20:33:09,920 - INFO - Lines Cleared: 0
+2025-06-03 20:33:09,920 - INFO - Max Level: 1
+2025-06-03 20:33:09,920 - INFO - Episode Length: 1
+2025-06-03 20:33:09,920 - INFO - Pieces Placed: 1
+2025-06-03 20:33:09,920 - INFO - Epsilon: 0.909
+2025-06-03 20:33:09,920 - INFO - Loss: 0.0000
+2025-06-03 20:33:09,920 - INFO - 
+2025-06-03 20:33:10,020 - ERROR - Error during episode 20 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (80,) + inhomogeneous part.
+2025-06-03 20:33:10,020 - INFO - Episode 20/10000
+2025-06-03 20:33:10,020 - INFO - Reward: -5.00
+2025-06-03 20:33:10,020 - INFO - Score: 0
+2025-06-03 20:33:10,021 - INFO - Lines Cleared: 0
+2025-06-03 20:33:10,021 - INFO - Max Level: 0
+2025-06-03 20:33:10,021 - INFO - Episode Length: 1
+2025-06-03 20:33:10,021 - INFO - Pieces Placed: 0
+2025-06-03 20:33:10,021 - INFO - Epsilon: 0.905
+2025-06-03 20:33:10,021 - INFO - Loss: 0.0000
+2025-06-03 20:33:10,021 - INFO - 
+2025-06-03 20:33:10,122 - ERROR - Error during episode 21 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (81,) + inhomogeneous part.
+2025-06-03 20:33:10,123 - INFO - Episode 21/10000
+2025-06-03 20:33:10,123 - INFO - Reward: 0.20
+2025-06-03 20:33:10,123 - INFO - Score: 0
+2025-06-03 20:33:10,123 - INFO - Lines Cleared: 0
+2025-06-03 20:33:10,123 - INFO - Max Level: 1
+2025-06-03 20:33:10,123 - INFO - Episode Length: 1
+2025-06-03 20:33:10,123 - INFO - Pieces Placed: 1
+2025-06-03 20:33:10,123 - INFO - Epsilon: 0.900
+2025-06-03 20:33:10,123 - INFO - Loss: 0.0000
+2025-06-03 20:33:10,123 - INFO - 
+2025-06-03 20:33:10,224 - ERROR - Error during episode 22 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (82,) + inhomogeneous part.
+2025-06-03 20:33:10,224 - INFO - Episode 22/10000
+2025-06-03 20:33:10,224 - INFO - Reward: 0.20
+2025-06-03 20:33:10,224 - INFO - Score: 0
+2025-06-03 20:33:10,224 - INFO - Lines Cleared: 0
+2025-06-03 20:33:10,224 - INFO - Max Level: 1
+2025-06-03 20:33:10,224 - INFO - Episode Length: 1
+2025-06-03 20:33:10,225 - INFO - Pieces Placed: 1
+2025-06-03 20:33:10,225 - INFO - Epsilon: 0.896
+2025-06-03 20:33:10,225 - INFO - Loss: 0.0000
+2025-06-03 20:33:10,225 - INFO - 
+2025-06-03 20:33:10,324 - ERROR - Error during episode 23 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (83,) + inhomogeneous part.
+2025-06-03 20:33:10,324 - INFO - Episode 23/10000
+2025-06-03 20:33:10,324 - INFO - Reward: 0.20
+2025-06-03 20:33:10,325 - INFO - Score: 0
+2025-06-03 20:33:10,325 - INFO - Lines Cleared: 0
+2025-06-03 20:33:10,325 - INFO - Max Level: 1
+2025-06-03 20:33:10,325 - INFO - Episode Length: 1
+2025-06-03 20:33:10,325 - INFO - Pieces Placed: 1
+2025-06-03 20:33:10,325 - INFO - Epsilon: 0.891
+2025-06-03 20:33:10,325 - INFO - Loss: 0.0000
+2025-06-03 20:33:10,325 - INFO - 
+2025-06-03 20:33:10,424 - ERROR - Error during episode 24 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (84,) + inhomogeneous part.
+2025-06-03 20:33:10,424 - INFO - Episode 24/10000
+2025-06-03 20:33:10,424 - INFO - Reward: 0.20
+2025-06-03 20:33:10,424 - INFO - Score: 0
+2025-06-03 20:33:10,424 - INFO - Lines Cleared: 0
+2025-06-03 20:33:10,424 - INFO - Max Level: 1
+2025-06-03 20:33:10,424 - INFO - Episode Length: 1
+2025-06-03 20:33:10,424 - INFO - Pieces Placed: 1
+2025-06-03 20:33:10,424 - INFO - Epsilon: 0.887
+2025-06-03 20:33:10,425 - INFO - Loss: 0.0000
+2025-06-03 20:33:10,425 - INFO - 
+2025-06-03 20:33:10,427 - ERROR - Error during episode 25 step: a must be 1-dimensional
+2025-06-03 20:33:10,427 - INFO - Episode 25/10000
+2025-06-03 20:33:10,427 - INFO - Reward: 0.00
+2025-06-03 20:33:10,427 - INFO - Score: 0
+2025-06-03 20:33:10,427 - INFO - Lines Cleared: 0
+2025-06-03 20:33:10,427 - INFO - Max Level: 0
+2025-06-03 20:33:10,427 - INFO - Episode Length: 0
+2025-06-03 20:33:10,427 - INFO - Pieces Placed: 0
+2025-06-03 20:33:10,427 - INFO - Epsilon: 0.882
+2025-06-03 20:33:10,427 - INFO - Loss: 0.0000
+2025-06-03 20:33:10,427 - INFO - 
+2025-06-03 20:33:10,429 - ERROR - Error during episode 26 step: a must be 1-dimensional
+2025-06-03 20:33:10,429 - INFO - Episode 26/10000
+2025-06-03 20:33:10,429 - INFO - Reward: 0.00
+2025-06-03 20:33:10,429 - INFO - Score: 0
+2025-06-03 20:33:10,429 - INFO - Lines Cleared: 0
+2025-06-03 20:33:10,429 - INFO - Max Level: 0
+2025-06-03 20:33:10,429 - INFO - Episode Length: 0
+2025-06-03 20:33:10,429 - INFO - Pieces Placed: 0
+2025-06-03 20:33:10,429 - INFO - Epsilon: 0.878
+2025-06-03 20:33:10,429 - INFO - Loss: 0.0000
+2025-06-03 20:33:10,430 - INFO - 
+2025-06-03 20:33:11,388 - ERROR - Error during episode 27 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (85,) + inhomogeneous part.
+2025-06-03 20:33:11,388 - INFO - Episode 27/10000
+2025-06-03 20:33:11,388 - INFO - Reward: 0.20
+2025-06-03 20:33:11,388 - INFO - Score: 0
+2025-06-03 20:33:11,388 - INFO - Lines Cleared: 0
+2025-06-03 20:33:11,388 - INFO - Max Level: 1
+2025-06-03 20:33:11,388 - INFO - Episode Length: 1
+2025-06-03 20:33:11,388 - INFO - Pieces Placed: 1
+2025-06-03 20:33:11,388 - INFO - Epsilon: 0.873
+2025-06-03 20:33:11,388 - INFO - Loss: 0.0000
+2025-06-03 20:33:11,388 - INFO - 
+2025-06-03 20:33:11,489 - ERROR - Error during episode 28 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (86,) + inhomogeneous part.
+2025-06-03 20:33:11,490 - INFO - Episode 28/10000
+2025-06-03 20:33:11,490 - INFO - Reward: 0.20
+2025-06-03 20:33:11,490 - INFO - Score: 0
+2025-06-03 20:33:11,490 - INFO - Lines Cleared: 0
+2025-06-03 20:33:11,490 - INFO - Max Level: 1
+2025-06-03 20:33:11,490 - INFO - Episode Length: 1
+2025-06-03 20:33:11,490 - INFO - Pieces Placed: 1
+2025-06-03 20:33:11,490 - INFO - Epsilon: 0.869
+2025-06-03 20:33:11,490 - INFO - Loss: 0.0000
+2025-06-03 20:33:11,491 - INFO - 
+2025-06-03 20:33:11,590 - ERROR - Error during episode 29 step: setting an array element with a sequence. The requested array has an inhomogeneous shape after 1 dimensions. The detected shape was (87,) + inhomogeneous part.
+2025-06-03 20:33:11,591 - INFO - Episode 29/10000
+2025-06-03 20:33:11,591 - INFO - Reward: 0.20
+2025-06-03 20:33:11,591 - INFO - Score: 0
+2025-06-03 20:33:11,591 - INFO - Lines Cleared: 0
+2025-06-03 20:33:11,591 - INFO - Max Level: 1
+2025-06-03 20:33:11,591 - INFO - Episode Length: 1
+2025-06-03 20:33:11,591 - INFO - Pieces Placed: 1
+2025-06-03 20:33:11,591 - INFO - Epsilon: 0.865
+2025-06-03 20:33:11,591 - INFO - Loss: 0.0000
+2025-06-03 20:33:11,591 - INFO - 

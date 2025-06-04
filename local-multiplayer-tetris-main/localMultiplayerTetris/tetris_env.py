@@ -215,41 +215,83 @@ class TetrisEnv(gym.Env):
             self.game.player2.block_pool = None
 
     def step(self, action):
-        """Execute one time step: place current piece at (rotation, x) then drop and lock"""
+        """Execute one time step: place current piece at (rotation, x) then drop and lock
+        
+        Args:
+            action: Either an integer in [0, 40] where:
+                   - 0-39: placement index = rotation*10 + column
+                   - 40: hold piece
+                   Or a tuple/list/array of (rotation, column)
+        
+        Returns:
+            obs: Current game state observation
+            reward: Reward for this step
+            terminated: True if game is over
+            truncated: True if max steps reached
+            info: Additional information
+        """
         self.episode_steps += 1
-        # decode action
-        if isinstance(action, (list, tuple, np.ndarray)):
-            # Provided as (rot, col)
-            rot, x = int(action[0]), int(action[1])
-            idx = rot * 10 + x
-        else:
-            idx = int(action)
-            if idx == 40:
-                # HOLD ACTION -------------------------------------------
-                self.player.action_handler.hold_piece()
-                # small time penalty to discourage excessive holding
-                reward = -0.01
+        
+        # Handle hold action first
+        if isinstance(action, (int, np.integer)) and action == 40:
+            # HOLD ACTION
+            if not self.player.can_hold:
+                # Invalid hold: small penalty but don't terminate
                 obs = self._get_observation()
-                game_over = check_lost(self.player.locked_positions)
-                terminated = game_over
-                truncated = (self.episode_steps >= self.max_steps)
-                info = {
-                    'lines_cleared': 0,
-                    'score': self.player.score,
-                    'level': self.game.level,
-                    'episode_steps': self.episode_steps,
-                    'piece_placed': False,
-                    'piece_held': True
-                }
-                return obs, reward, terminated, truncated, info
-            rot, x = divmod(idx, 10)
-        # Place column first
+                return obs, -1.0, False, False, {'invalid_move': True, 'reason': 'cannot_hold'}
+            
+            self.player.action_handler.hold_piece()
+            reward = -0.01  # small time penalty
+            obs = self._get_observation()
+            game_over = check_lost(self.player.locked_positions)
+            terminated = game_over
+            truncated = (self.episode_steps >= self.max_steps)
+            info = {
+                'lines_cleared': 0,
+                'score': self.player.score,
+                'level': self.game.level,
+                'episode_steps': self.episode_steps,
+                'piece_placed': False,
+                'piece_held': True
+            }
+            return obs, reward, terminated, truncated, info
+        
+        # Handle placement action
+        try:
+            if isinstance(action, (list, tuple, np.ndarray)):
+                # Provided as (rot, col)
+                rot, x = int(action[0]), int(action[1])
+                if not (0 <= rot < 4 and 0 <= x < 10):
+                    raise ValueError(f"Invalid rotation ({rot}) or column ({x})")
+                idx = rot * 10 + x
+            else:
+                # Provided as flattened index
+                idx = int(action)
+                if not 0 <= idx < 40:
+                    raise ValueError(f"Invalid action index: {idx}")
+                rot, x = divmod(idx, 10)
+        except (ValueError, TypeError, IndexError) as e:
+            # Invalid action format: return penalty but don't terminate
+            obs = self._get_observation()
+            return obs, -1.0, False, False, {'invalid_move': True, 'reason': 'invalid_action_format', 'error': str(e)}
+        
+        # Get current piece and grid
         piece = self.player.current_piece
-        piece.x = x
-
+        if piece is None:
+            # No current piece: shouldn't happen, but handle gracefully
+            obs = self._get_observation()
+            return obs, -1.0, False, False, {'invalid_move': True, 'reason': 'no_current_piece'}
+        
+        # Store original position for reverting if needed
+        orig_x, orig_y, orig_rot = piece.x, piece.y, piece.rotation
+        
+        # Try to place piece
         grid = create_grid(self.player.locked_positions)
-
-        # Rotate toward desired orientation with at most 3 attempts
+        
+        # Set column first
+        piece.x = x
+        
+        # Rotate toward desired orientation
         if rot != piece.rotation:
             # Decide direction and number of quarter-turns (1-3)
             cw_steps = (rot - piece.rotation) % 4
@@ -258,50 +300,77 @@ class TetrisEnv(gym.Env):
                 direction, steps = 1, cw_steps
             else:
                 direction, steps = -1, ccw_steps
-
+            
+            # Try rotation with wall kicks
+            success = False
             for _ in range(steps):
-                piece.rotate(direction, grid)  # uses SRS wall kicks
-                grid = create_grid(self.player.locked_positions)  # refresh grid after each attempt
-
-        # Simple boundary kick: if rotated piece hangs off left/right, shift into bounds
+                if piece.rotate(direction, grid):  # returns True if rotation succeeded
+                    success = True
+                else:
+                    # Rotation failed: revert and try next
+                    piece.rotation = orig_rot
+                    piece.x = orig_x
+                    piece.y = orig_y
+                    break
+            
+            if not success:
+                # All rotation attempts failed: invalid move
+                obs = self._get_observation()
+                return obs, -5.0, False, False, {'invalid_move': True, 'reason': 'rotation_failed'}
+        
+        # Ensure piece is within bounds
         positions = convert_shape_format(piece)
         xs = [p[0] for p in positions]
-        shift = 0
-        if min(xs) < 0:
-            shift = -min(xs)
-        elif max(xs) > 9:
-            shift = 9 - max(xs)
-        piece.x += shift
-
-        # drop until collision (but first ensure spawn placement is valid)
-        grid = create_grid(self.player.locked_positions)
-        # invalid placement: apply penalty but don't terminate
-        if not valid_space(piece, grid):
+        if min(xs) < 0 or max(xs) > 9:
+            # Out of bounds: invalid move
+            piece.x = orig_x
+            piece.y = orig_y
+            piece.rotation = orig_rot
             obs = self._get_observation()
-            return obs, -10.0, False, False, {'invalid_move': True}
+            return obs, -5.0, False, False, {'invalid_move': True, 'reason': 'out_of_bounds'}
+        
+        # Check if placement is valid
+        grid = create_grid(self.player.locked_positions)
+        if not valid_space(piece, grid):
+            # Invalid placement: revert and return penalty
+            piece.x = orig_x
+            piece.y = orig_y
+            piece.rotation = orig_rot
+            obs = self._get_observation()
+            return obs, -5.0, False, False, {'invalid_move': True, 'reason': 'invalid_space'}
+        
+        # Drop piece until collision
         while valid_space(piece, grid):
             piece.y += 1
         piece.y -= 1
-        # trigger lock on placed piece
+        
+        # Lock piece and get new piece
         self.player.change_piece = True
-        # lock piece and compute cleared lines
+        
+        # Update game state and get cleared lines
         prev_locked = set(self.player.locked_positions.keys())
         lines_cleared = self.player.update(self.game.fall_speed, self.game.level)
         new_positions = set(self.player.locked_positions.keys()) - prev_locked
-        # episode termination/truncation
+        
+        # Check termination conditions
         game_over = check_lost(self.player.locked_positions)
         terminated = game_over
         truncated = (self.episode_steps >= self.max_steps)
-        # observe and reward
+        
+        # Get observation and compute reward
         obs = self._get_observation()
         reward = self._get_reward(lines_cleared, game_over, new_positions)
+        
+        # Prepare info dict
         info = {
             'lines_cleared': lines_cleared,
             'score': self.player.score,
             'level': self.game.level,
             'episode_steps': self.episode_steps,
-            'piece_placed': True
+            'piece_placed': True,
+            'invalid_move': False
         }
+        
         return obs, reward, terminated, truncated, info
     
     def reset(self):

@@ -8,10 +8,12 @@ class ReplayBuffer:
     Prioritized Experience Replay Buffer for Tetris DQN
     
     State Structure (from tetris_env.py):
-    - Grid: 20x10 matrix (0 for empty, 1-7 for different piece colors)
-    - Current piece: 4x4 matrix (0 for empty, 1 for filled)
-    - Next piece: 4x4 matrix (0 for empty, 1 for filled)
-    - Hold piece: 4x4 matrix (0 for empty, 1 for filled)
+    - Grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
+    - Next piece: scalar ID (1-7, 0 if none)
+    - Hold piece: scalar ID (1-7, 0 if none)
+    - Current piece: shape ID, rotation, x and y coordinates
+    - Can hold: binary flag
+    Total input dimension: 207
     
     Action Space (from tetris_env.py):
     - 0: Move Left
@@ -45,21 +47,14 @@ class ReplayBuffer:
         """
         Add a transition to the buffer
         Args:
-            state: Dictionary containing:
-                - grid: 20x10 matrix of pieces, 1 for locked piece and 2 for current piece
-                - next piece (0-7)
-                - hold piece (0-7)
-            action: Integer (0-7) representing the action taken
+            state: Either a dictionary containing state components or a preprocessed array
+            action: Integer (0-40) representing the action taken
             reward: Float reward value
-            next_state: Dictionary with same structure as state
+            next_state: Same format as state
             done: Boolean indicating episode end
-            info: Dictionary containing:
-                - lines_cleared: Number of lines cleared
-                - score: Current game score
-                - level: Current game level
-                - episode_steps: Number of steps taken
+            info: Dictionary containing additional information
         """
-        # Convert state dictionaries to tensors
+        # Convert states to tensors
         state_tensor = self._state_to_tensor(state)
         next_state_tensor = self._state_to_tensor(next_state)
         
@@ -78,28 +73,49 @@ class ReplayBuffer:
     
     def _state_to_tensor(self, state):
         """
-        Convert state dictionary to tensor
-        State includes:
-        - grid: 20×10 matrix (200 values)
-        - next_piece: shape ID scalar
-        - hold_piece: shape ID scalar
-        - current_shape: shape ID scalar
-        - current_rotation: rotation index scalar
-        - current_x: x-coordinate scalar
-        - current_y: y-coordinate scalar
-        - can_hold: binary scalar (1 if can hold, 0 if not)
-        Total: 200 + 7 = 207 values
+        Convert state to tensor
+        Args:
+            state: Either a dictionary containing state components or a preprocessed array
+        Returns:
+            Tensor of shape (207,) detached from computation graph
         """
-        grid = torch.FloatTensor(state['grid'].flatten())
-        # Scalars: next, hold, curr_shape, rotation, x, y
-        next_piece = torch.FloatTensor([state.get('next_piece', 0)])
-        hold_piece = torch.FloatTensor([state.get('hold_piece', 0)])
-        curr_shape = torch.FloatTensor([state.get('current_shape', 0)])
-        curr_rot = torch.FloatTensor([state.get('current_rotation', 0)])
-        curr_x = torch.FloatTensor([state.get('current_x', 0)])
-        curr_y = torch.FloatTensor([state.get('current_y', 0)])
-        can_hold = torch.FloatTensor([state.get('can_hold', 1)])
-        return torch.cat([grid, next_piece, hold_piece, curr_shape, curr_rot, curr_x, curr_y, can_hold])
+        if isinstance(state, dict):
+            # Convert dictionary state to tensor
+            grid = torch.FloatTensor(state['grid'].astype(np.float32).flatten()).detach()
+            next_piece = torch.FloatTensor([float(state.get('next_piece', 0))]).detach()
+            hold_piece = torch.FloatTensor([float(state.get('hold_piece', 0))]).detach()
+            curr_shape = torch.FloatTensor([float(state.get('current_shape', 0))]).detach()
+            curr_rot = torch.FloatTensor([float(state.get('current_rotation', 0))]).detach()
+            curr_x = torch.FloatTensor([float(state.get('current_x', 0))]).detach()
+            curr_y = torch.FloatTensor([float(state.get('current_y', 0))]).detach()
+            can_hold = torch.FloatTensor([float(state.get('can_hold', 1))]).detach()
+            
+            # Validate grid shape
+            if grid.shape[0] != 200:
+                raise ValueError(f"Grid should have 200 values when flattened, got {grid.shape[0]}")
+            
+            # Concatenate and validate final shape
+            state_tensor = torch.cat([grid, next_piece, hold_piece, curr_shape, curr_rot, curr_x, curr_y, can_hold])
+            if state_tensor.shape[0] != 207:
+                raise ValueError(f"State tensor should have 207 values, got {state_tensor.shape[0]}")
+            return state_tensor
+        else:
+            # State is already preprocessed array
+            if not isinstance(state, (np.ndarray, torch.Tensor)):
+                raise ValueError(f"Expected numpy array or torch tensor, got {type(state)}")
+            
+            # Convert to float32 numpy array first if needed
+            if isinstance(state, np.ndarray):
+                state = state.astype(np.float32)
+            
+            # Convert to tensor
+            state = torch.FloatTensor(state).detach()
+            
+            # Ensure state has correct shape
+            if state.shape[0] != 207:
+                raise ValueError(f"State array should have 207 values, got {state.shape[0]}")
+            
+            return state.float()
     
     def sample(self, batch_size):
         """
@@ -109,10 +125,10 @@ class ReplayBuffer:
         Returns:
             Tuple of (states, actions, rewards, next_states, dones, info, indices, weights)
             where:
-            - states: Tensor of shape (batch_size, 248)
+            - states: Tensor of shape (batch_size, 207)
             - actions: Tensor of shape (batch_size,)
             - rewards: Tensor of shape (batch_size,)
-            - next_states: Tensor of shape (batch_size, 248)
+            - next_states: Tensor of shape (batch_size, 207)
             - dones: Tensor of shape (batch_size,)
             - info: List of info dictionaries
             - indices: Array of sampled indices

@@ -12,30 +12,21 @@ class DQN(nn.Module):
     - Grid: 20x10 matrix (200 values)
     - Next piece: scalar ID
     - Hold piece: scalar ID
-    Total input dimension: 202
+    - Current piece: shape ID, rotation, x and y coordinates
+    - Can hold: binary flag
+    Total input dimension: 207
     
     Output Structure:
-    - 7 Q-values corresponding to actions:
-        0: Move Left (action_handler.py: move_left)
-        1: Move Right (action_handler.py: move_right)
-        2: Move Down (action_handler.py: move_down)
-        3: Rotate Clockwise (action_handler.py: rotate_cw)
-        4: Rotate Counter-clockwise (action_handler.py: rotate_ccw)
-        5: Hard Drop (action_handler.py: hard_drop)
-        6: Hold Piece (action_handler.py: hold_piece)
-    
-    Related Files:
-    - tetris_env.py: Defines action space and state structure
-    - action_handler.py: Implements action mechanics
-    - game.py: Contains game state and piece movement logic
-    - piece.py: Defines piece shapes and rotation logic
+    - 41 Q-values corresponding to actions:
+        0-39: Placement index = rotation*10 + column
+        40: Hold piece
     """
     def __init__(self, input_dim, output_dim):
         """
         Initialize DQN network
         Args:
-            input_dim: Dimension of input state (202)
-            output_dim: Number of possible actions (7)
+            input_dim: Dimension of input state (207)
+            output_dim: Number of possible actions (41)
         """
         super(DQN, self).__init__()
         
@@ -49,17 +40,17 @@ class DQN(nn.Module):
             nn.ReLU()
         )
         
-        # Scalar embedding for next and hold pieces
+        # MLP for piece metadata (7 values)
         self.piece_embed = nn.Sequential(
-            nn.Linear(2, 32),  # next + hold scalar IDs
+            nn.Linear(7, 64),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(64, 64),
             nn.ReLU()
         )
         
         # Combined network
         self.combined = nn.Sequential(
-            nn.Linear(64 * 20 * 10 + 32, 512),
+            nn.Linear(64 * 20 * 10 + 64, 512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.ReLU(),
@@ -70,20 +61,29 @@ class DQN(nn.Module):
         """
         Forward pass through the network
         Args:
-            x: Input tensor of shape (batch_size, 202)
+            x: Input tensor of shape (batch_size, 207)
+                - First 200 values: Flattened grid (20x10)
+                - Last 7 values: Piece metadata
         Returns:
-            Q-values for each action of shape (batch_size, 7)
+            Q-values for each action of shape (batch_size, 41)
         """
-        # Reshape input
         batch_size = x.size(0)
-        grid = x[:, :200].view(batch_size, 1, 20, 10)  # Grid: 20x10
-        pieces = x[:, 200:]  # Scalars: next_piece + hold_piece
+        
+        # Ensure input is the correct shape
+        if x.size(1) != 207:
+            raise ValueError(f"Expected input dimension of 207, got {x.size(1)}")
+            
+        # Split and reshape grid (first 200 values)
+        grid = x[:, :200].contiguous().view(batch_size, 1, 20, 10)
+        
+        # Get piece metadata (last 7 values)
+        pieces = x[:, 200:].contiguous()
         
         # Process grid with CNN
         grid_features = self.grid_conv(grid)
         grid_features = grid_features.view(batch_size, -1)
         
-        # Process piece scalars with embedding
+        # Process piece metadata with MLP
         piece_features = self.piece_embed(pieces)
         
         # Combine features
@@ -97,31 +97,22 @@ class DQNAgent:
     DQN Agent for Tetris
     
     State Space (from tetris_env.py):
-    - Grid: 20x10 matrix (0 for empty, 1-7 for different piece colors)
-    - Next piece: scalar ID
-    - Hold piece: scalar ID
+    - Grid: 20x10 matrix (0 for empty, 1 for locked, 2 for current piece)
+    - Next piece: scalar ID (1-7, 0 if none)
+    - Hold piece: scalar ID (1-7, 0 if none)
+    - Current piece: shape ID, rotation, x and y coordinates
+    - Can hold: binary flag
     
-    Action Space (from tetris_env.py):
-    - 0: Move Left
-    - 1: Move Right
-    - 2: Move Down
-    - 3: Rotate Clockwise
-    - 4: Rotate Counter-clockwise
-    - 5: Hard Drop
-    - 6: Hold Piece
-    
-    Related Files:
-    - tetris_env.py: Defines action space and state structure
-    - action_handler.py: Implements action mechanics
-    - game.py: Contains game state and piece movement logic
-    - piece.py: Defines piece shapes and rotation logic
+    Action Space:
+    - 0-39: Placement index = rotation*10 + column
+    - 40: Hold piece
     """
     def __init__(self, state_dim, action_dim, learning_rate=1e-4, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, top_k_ac=3):
         """
         Initialize DQN agent
         Args:
-            state_dim: Dimension of state space (202)
-            action_dim: Number of possible actions (7)
+            state_dim: Dimension of state space (207)
+            action_dim: Number of possible actions (41)
             learning_rate: Learning rate for optimizer
             gamma: Discount factor
             epsilon: Initial exploration rate
@@ -161,12 +152,9 @@ class DQNAgent:
         """
         Select action using epsilon-greedy policy
         Args:
-            state: Dictionary containing:
-                - grid: 20x10 matrix of piece colors
-                - next_piece: scalar ID
-                - hold_piece: scalar ID
+            state: Preprocessed state array of shape (207,)
         Returns:
-            Integer (0-6) representing the selected action
+            Integer (0-40) representing the selected action
         """
         if np.random.random() < self.epsilon:
             return np.random.randint(self.action_dim)
@@ -174,9 +162,8 @@ class DQNAgent:
         with torch.no_grad():
             state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             q_values = self.policy_net(state)
-            top_k_q_values, top_k_indices = torch.topk(q_values, self.top_k)  # watch for batching, debug shapes for later
+            top_k_q_values, top_k_indices = torch.topk(q_values, self.top_k)
             return int(np.random.choice(top_k_indices.cpu().numpy()))
-            # return q_values.argmax().item()
     
     def update_epsilon(self):
         """Update exploration rate"""
@@ -204,13 +191,16 @@ class DQNAgent:
             
         states, actions, rewards, next_states, dones, info, indices, weights = batch
         
-        # Move tensors to device
-        states = states.to(self.device)
-        actions = actions.to(self.device)
-        rewards = rewards.to(self.device)
-        next_states = next_states.to(self.device)
-        dones = dones.to(self.device)
-        weights = weights.to(self.device)
+        # Ensure actions are within valid range (0-40)
+        actions = torch.clamp(actions, 0, self.action_dim - 1)
+        
+        # Move tensors to device and ensure they're detached
+        states = states.detach().to(self.device)
+        actions = actions.detach().to(self.device)
+        rewards = rewards.detach().to(self.device)
+        next_states = next_states.detach().to(self.device)
+        dones = dones.detach().to(self.device)
+        weights = weights.detach().to(self.device)
         
         # Compute current Q values
         current_q_values = self.policy_net(states).gather(1, actions.unsqueeze(1))
@@ -218,7 +208,10 @@ class DQNAgent:
         # Compute next Q values with Double DQN
         with torch.no_grad():
             # Select actions using policy network
-            next_actions = self.policy_net(next_states).max(1)[1].unsqueeze(1)
+            next_q_values = self.policy_net(next_states)
+            next_actions = next_q_values.max(1)[1].unsqueeze(1)
+            # Clamp actions to valid range
+            next_actions = torch.clamp(next_actions, 0, self.action_dim - 1)
             # Evaluate actions using target network
             next_q_values = self.target_net(next_states).gather(1, next_actions)
             target_q_values = rewards.unsqueeze(1) + (1 - dones.unsqueeze(1)) * self.gamma * next_q_values

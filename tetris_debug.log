@@ -1,0 +1,635 @@
+2025-06-03 20:40:10,696 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:10,696 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:40:10,696 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:13,637 INFO:Episode 1/10000
+2025-06-03 20:40:13,637 INFO:Reward: -17.99
+2025-06-03 20:40:13,637 INFO:Score: 0
+2025-06-03 20:40:13,637 INFO:Lines Cleared: 0
+2025-06-03 20:40:13,637 INFO:Max Level: 1
+2025-06-03 20:40:13,637 INFO:Episode Length: 24
+2025-06-03 20:40:13,637 INFO:Epsilon: 1.000
+2025-06-03 20:40:13,637 INFO:Loss: 0.0000
+2025-06-03 20:40:13,638 INFO:
+2025-06-03 20:40:13,638 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:13,639 DEBUG:RESET: Spawn piece: shape=[['.....', '...0.', '.000.', '.....', '.....'], ['.....', '..0..', '..0..', '..00.', '.....'], ['.....', '.....', '.000.', '.0...', '.....'], ['.....', '.00..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:13,639 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:16,263 INFO:Episode 2/10000
+2025-06-03 20:40:16,264 INFO:Reward: -22.58
+2025-06-03 20:40:16,264 INFO:Score: 0
+2025-06-03 20:40:16,264 INFO:Lines Cleared: 0
+2025-06-03 20:40:16,264 INFO:Max Level: 1
+2025-06-03 20:40:16,264 INFO:Episode Length: 26
+2025-06-03 20:40:16,264 INFO:Epsilon: 1.000
+2025-06-03 20:40:16,264 INFO:Loss: 0.0000
+2025-06-03 20:40:16,264 INFO:
+2025-06-03 20:40:16,265 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:16,266 DEBUG:RESET: Spawn piece: shape=[['.....', '.0...', '.000.', '.....', '.....'], ['.....', '..00.', '..0..', '..0..', '.....'], ['.....', '.....', '.000.', '...0.', '.....'], ['.....', '..0..', '..0..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:40:16,266 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:18,331 INFO:Episode 3/10000
+2025-06-03 20:40:18,331 INFO:Reward: -24.91
+2025-06-03 20:40:18,331 INFO:Score: 0
+2025-06-03 20:40:18,331 INFO:Lines Cleared: 0
+2025-06-03 20:40:18,331 INFO:Max Level: 1
+2025-06-03 20:40:18,331 INFO:Episode Length: 19
+2025-06-03 20:40:18,331 INFO:Epsilon: 0.970
+2025-06-03 20:40:18,331 INFO:Loss: 1.4443
+2025-06-03 20:40:18,331 INFO:
+2025-06-03 20:40:18,331 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:18,331 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:40:18,331 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:20,245 INFO:Episode 4/10000
+2025-06-03 20:40:20,245 INFO:Reward: -20.75
+2025-06-03 20:40:20,245 INFO:Score: 0
+2025-06-03 20:40:20,245 INFO:Lines Cleared: 0
+2025-06-03 20:40:20,245 INFO:Max Level: 1
+2025-06-03 20:40:20,245 INFO:Episode Length: 19
+2025-06-03 20:40:20,246 INFO:Epsilon: 0.882
+2025-06-03 20:40:20,246 INFO:Loss: 1.3987
+2025-06-03 20:40:20,246 INFO:
+2025-06-03 20:40:20,246 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:20,246 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:40:20,246 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:22,354 INFO:Episode 5/10000
+2025-06-03 20:40:22,355 INFO:Reward: -20.15
+2025-06-03 20:40:22,355 INFO:Score: 0
+2025-06-03 20:40:22,355 INFO:Lines Cleared: 0
+2025-06-03 20:40:22,355 INFO:Max Level: 1
+2025-06-03 20:40:22,355 INFO:Episode Length: 21
+2025-06-03 20:40:22,355 INFO:Epsilon: 0.794
+2025-06-03 20:40:22,355 INFO:Loss: 1.0878
+2025-06-03 20:40:22,355 INFO:
+2025-06-03 20:40:22,355 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:22,355 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '0000.', '.....', '.....'], ['..0..', '..0..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:22,355 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:23,769 INFO:Episode 6/10000
+2025-06-03 20:40:23,770 INFO:Reward: -16.98
+2025-06-03 20:40:23,770 INFO:Score: 0
+2025-06-03 20:40:23,770 INFO:Lines Cleared: 0
+2025-06-03 20:40:23,770 INFO:Max Level: 1
+2025-06-03 20:40:23,770 INFO:Episode Length: 14
+2025-06-03 20:40:23,770 INFO:Epsilon: 0.740
+2025-06-03 20:40:23,770 INFO:Loss: 1.6536
+2025-06-03 20:40:23,770 INFO:
+2025-06-03 20:40:23,770 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:23,770 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '0000.', '.....', '.....'], ['..0..', '..0..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:23,770 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:26,132 INFO:Episode 7/10000
+2025-06-03 20:40:26,132 INFO:Reward: -17.40
+2025-06-03 20:40:26,132 INFO:Score: 0
+2025-06-03 20:40:26,132 INFO:Lines Cleared: 0
+2025-06-03 20:40:26,132 INFO:Max Level: 1
+2025-06-03 20:40:26,132 INFO:Episode Length: 23
+2025-06-03 20:40:26,132 INFO:Epsilon: 0.660
+2025-06-03 20:40:26,132 INFO:Loss: 2.5766
+2025-06-03 20:40:26,132 INFO:
+2025-06-03 20:40:26,132 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:26,132 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '0000.', '.....', '.....'], ['..0..', '..0..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:26,132 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:28,369 INFO:Episode 8/10000
+2025-06-03 20:40:28,369 INFO:Reward: -19.56
+2025-06-03 20:40:28,369 INFO:Score: 0
+2025-06-03 20:40:28,369 INFO:Lines Cleared: 0
+2025-06-03 20:40:28,369 INFO:Max Level: 1
+2025-06-03 20:40:28,369 INFO:Episode Length: 22
+2025-06-03 20:40:28,369 INFO:Epsilon: 0.591
+2025-06-03 20:40:28,369 INFO:Loss: 3.9840
+2025-06-03 20:40:28,369 INFO:
+2025-06-03 20:40:28,369 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:28,369 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:40:28,369 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:29,986 INFO:Episode 9/10000
+2025-06-03 20:40:29,986 INFO:Reward: -16.93
+2025-06-03 20:40:29,986 INFO:Score: 0
+2025-06-03 20:40:29,986 INFO:Lines Cleared: 0
+2025-06-03 20:40:29,986 INFO:Max Level: 1
+2025-06-03 20:40:29,986 INFO:Episode Length: 16
+2025-06-03 20:40:29,986 INFO:Epsilon: 0.545
+2025-06-03 20:40:29,986 INFO:Loss: 5.7550
+2025-06-03 20:40:29,986 INFO:
+2025-06-03 20:40:29,987 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:29,987 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:40:29,987 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:31,606 INFO:Episode 10/10000
+2025-06-03 20:40:31,607 INFO:Reward: -21.87
+2025-06-03 20:40:31,607 INFO:Score: 0
+2025-06-03 20:40:31,607 INFO:Lines Cleared: 0
+2025-06-03 20:40:31,607 INFO:Max Level: 1
+2025-06-03 20:40:31,607 INFO:Episode Length: 16
+2025-06-03 20:40:31,607 INFO:Epsilon: 0.503
+2025-06-03 20:40:31,607 INFO:Loss: 7.6154
+2025-06-03 20:40:31,607 INFO:
+2025-06-03 20:40:31,607 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:31,607 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:40:31,607 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:33,647 INFO:Episode 11/10000
+2025-06-03 20:40:33,647 INFO:Reward: -13.53
+2025-06-03 20:40:33,647 INFO:Score: 0
+2025-06-03 20:40:33,647 INFO:Lines Cleared: 0
+2025-06-03 20:40:33,647 INFO:Max Level: 1
+2025-06-03 20:40:33,647 INFO:Episode Length: 20
+2025-06-03 20:40:33,647 INFO:Epsilon: 0.455
+2025-06-03 20:40:33,647 INFO:Loss: 10.5192
+2025-06-03 20:40:33,647 INFO:
+2025-06-03 20:40:33,647 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:33,647 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:40:33,647 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:35,782 INFO:Episode 12/10000
+2025-06-03 20:40:35,782 INFO:Reward: -15.11
+2025-06-03 20:40:35,782 INFO:Score: 0
+2025-06-03 20:40:35,782 INFO:Lines Cleared: 0
+2025-06-03 20:40:35,782 INFO:Max Level: 1
+2025-06-03 20:40:35,782 INFO:Episode Length: 21
+2025-06-03 20:40:35,782 INFO:Epsilon: 0.410
+2025-06-03 20:40:35,782 INFO:Loss: 13.1726
+2025-06-03 20:40:35,782 INFO:
+2025-06-03 20:40:35,782 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:35,782 DEBUG:RESET: Spawn piece: shape=[['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:35,782 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:37,429 INFO:Episode 13/10000
+2025-06-03 20:40:37,430 INFO:Reward: -16.53
+2025-06-03 20:40:37,430 INFO:Score: 0
+2025-06-03 20:40:37,430 INFO:Lines Cleared: 0
+2025-06-03 20:40:37,430 INFO:Max Level: 1
+2025-06-03 20:40:37,430 INFO:Episode Length: 16
+2025-06-03 20:40:37,430 INFO:Epsilon: 0.378
+2025-06-03 20:40:37,430 INFO:Loss: 17.8773
+2025-06-03 20:40:37,430 INFO:
+2025-06-03 20:40:37,430 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:37,430 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:40:37,430 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:39,348 INFO:Episode 14/10000
+2025-06-03 20:40:39,348 INFO:Reward: -20.96
+2025-06-03 20:40:39,348 INFO:Score: 0
+2025-06-03 20:40:39,348 INFO:Lines Cleared: 0
+2025-06-03 20:40:39,348 INFO:Max Level: 1
+2025-06-03 20:40:39,348 INFO:Episode Length: 19
+2025-06-03 20:40:39,348 INFO:Epsilon: 0.344
+2025-06-03 20:40:39,348 INFO:Loss: 19.0584
+2025-06-03 20:40:39,348 INFO:
+2025-06-03 20:40:39,348 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:39,348 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:40:39,348 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:41,292 INFO:Episode 15/10000
+2025-06-03 20:40:41,292 INFO:Reward: -26.19
+2025-06-03 20:40:41,292 INFO:Score: 0
+2025-06-03 20:40:41,292 INFO:Lines Cleared: 0
+2025-06-03 20:40:41,292 INFO:Max Level: 1
+2025-06-03 20:40:41,292 INFO:Episode Length: 19
+2025-06-03 20:40:41,292 INFO:Epsilon: 0.313
+2025-06-03 20:40:41,292 INFO:Loss: 26.8755
+2025-06-03 20:40:41,292 INFO:
+2025-06-03 20:40:41,293 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:41,293 DEBUG:RESET: Spawn piece: shape=[['.....', '.0...', '.000.', '.....', '.....'], ['.....', '..00.', '..0..', '..0..', '.....'], ['.....', '.....', '.000.', '...0.', '.....'], ['.....', '..0..', '..0..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:40:41,293 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:43,343 INFO:Episode 16/10000
+2025-06-03 20:40:43,343 INFO:Reward: -14.54
+2025-06-03 20:40:43,343 INFO:Score: 0
+2025-06-03 20:40:43,343 INFO:Lines Cleared: 0
+2025-06-03 20:40:43,343 INFO:Max Level: 1
+2025-06-03 20:40:43,343 INFO:Episode Length: 20
+2025-06-03 20:40:43,343 INFO:Epsilon: 0.283
+2025-06-03 20:40:43,343 INFO:Loss: 36.8167
+2025-06-03 20:40:43,343 INFO:
+2025-06-03 20:40:43,343 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:43,343 DEBUG:RESET: Spawn piece: shape=[['.....', '...0.', '.000.', '.....', '.....'], ['.....', '..0..', '..0..', '..00.', '.....'], ['.....', '.....', '.000.', '.0...', '.....'], ['.....', '.00..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:43,343 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:44,974 INFO:Episode 17/10000
+2025-06-03 20:40:44,975 INFO:Reward: -15.23
+2025-06-03 20:40:44,975 INFO:Score: 0
+2025-06-03 20:40:44,975 INFO:Lines Cleared: 0
+2025-06-03 20:40:44,975 INFO:Max Level: 1
+2025-06-03 20:40:44,975 INFO:Episode Length: 16
+2025-06-03 20:40:44,975 INFO:Epsilon: 0.261
+2025-06-03 20:40:44,975 INFO:Loss: 51.5596
+2025-06-03 20:40:44,975 INFO:
+2025-06-03 20:40:44,975 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:44,975 DEBUG:RESET: Spawn piece: shape=[['.....', '...0.', '.000.', '.....', '.....'], ['.....', '..0..', '..0..', '..00.', '.....'], ['.....', '.....', '.000.', '.0...', '.....'], ['.....', '.00..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:44,975 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:46,483 INFO:Episode 18/10000
+2025-06-03 20:40:46,483 INFO:Reward: -16.81
+2025-06-03 20:40:46,483 INFO:Score: 0
+2025-06-03 20:40:46,483 INFO:Lines Cleared: 0
+2025-06-03 20:40:46,483 INFO:Max Level: 1
+2025-06-03 20:40:46,483 INFO:Episode Length: 15
+2025-06-03 20:40:46,483 INFO:Epsilon: 0.242
+2025-06-03 20:40:46,483 INFO:Loss: 67.4127
+2025-06-03 20:40:46,483 INFO:
+2025-06-03 20:40:46,483 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:46,483 DEBUG:RESET: Spawn piece: shape=[['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:46,483 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:48,627 INFO:Episode 19/10000
+2025-06-03 20:40:48,627 INFO:Reward: -15.15
+2025-06-03 20:40:48,627 INFO:Score: 0
+2025-06-03 20:40:48,627 INFO:Lines Cleared: 0
+2025-06-03 20:40:48,627 INFO:Max Level: 1
+2025-06-03 20:40:48,627 INFO:Episode Length: 21
+2025-06-03 20:40:48,627 INFO:Epsilon: 0.218
+2025-06-03 20:40:48,627 INFO:Loss: 67.9859
+2025-06-03 20:40:48,627 INFO:
+2025-06-03 20:40:48,628 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:48,628 DEBUG:RESET: Spawn piece: shape=[['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:48,628 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:50,456 INFO:Episode 20/10000
+2025-06-03 20:40:50,456 INFO:Reward: -15.75
+2025-06-03 20:40:50,456 INFO:Score: 0
+2025-06-03 20:40:50,456 INFO:Lines Cleared: 0
+2025-06-03 20:40:50,456 INFO:Max Level: 1
+2025-06-03 20:40:50,456 INFO:Episode Length: 18
+2025-06-03 20:40:50,456 INFO:Epsilon: 0.199
+2025-06-03 20:40:50,456 INFO:Loss: 81.0147
+2025-06-03 20:40:50,456 INFO:
+2025-06-03 20:40:50,456 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:50,456 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:40:50,456 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:52,274 INFO:Episode 21/10000
+2025-06-03 20:40:52,274 INFO:Reward: -16.19
+2025-06-03 20:40:52,274 INFO:Score: 0
+2025-06-03 20:40:52,274 INFO:Lines Cleared: 0
+2025-06-03 20:40:52,274 INFO:Max Level: 1
+2025-06-03 20:40:52,274 INFO:Episode Length: 18
+2025-06-03 20:40:52,274 INFO:Epsilon: 0.182
+2025-06-03 20:40:52,274 INFO:Loss: 97.3909
+2025-06-03 20:40:52,274 INFO:
+2025-06-03 20:40:52,274 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:52,275 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:40:52,275 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:53,600 INFO:Episode 22/10000
+2025-06-03 20:40:53,600 INFO:Reward: -17.09
+2025-06-03 20:40:53,600 INFO:Score: 0
+2025-06-03 20:40:53,600 INFO:Lines Cleared: 0
+2025-06-03 20:40:53,600 INFO:Max Level: 1
+2025-06-03 20:40:53,600 INFO:Episode Length: 13
+2025-06-03 20:40:53,600 INFO:Epsilon: 0.170
+2025-06-03 20:40:53,600 INFO:Loss: 131.7564
+2025-06-03 20:40:53,600 INFO:
+2025-06-03 20:40:53,600 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:53,600 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:40:53,600 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:54,909 INFO:Episode 23/10000
+2025-06-03 20:40:54,909 INFO:Reward: -17.12
+2025-06-03 20:40:54,909 INFO:Score: 0
+2025-06-03 20:40:54,909 INFO:Lines Cleared: 0
+2025-06-03 20:40:54,909 INFO:Max Level: 1
+2025-06-03 20:40:54,909 INFO:Episode Length: 13
+2025-06-03 20:40:54,909 INFO:Epsilon: 0.160
+2025-06-03 20:40:54,909 INFO:Loss: 135.8938
+2025-06-03 20:40:54,909 INFO:
+2025-06-03 20:40:54,909 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:54,909 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:40:54,909 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:56,018 INFO:Episode 24/10000
+2025-06-03 20:40:56,018 INFO:Reward: -17.60
+2025-06-03 20:40:56,018 INFO:Score: 0
+2025-06-03 20:40:56,018 INFO:Lines Cleared: 0
+2025-06-03 20:40:56,018 INFO:Max Level: 1
+2025-06-03 20:40:56,018 INFO:Episode Length: 11
+2025-06-03 20:40:56,018 INFO:Epsilon: 0.151
+2025-06-03 20:40:56,018 INFO:Loss: 176.8839
+2025-06-03 20:40:56,018 INFO:
+2025-06-03 20:40:56,018 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:56,018 DEBUG:RESET: Spawn piece: shape=[['.....', '...0.', '.000.', '.....', '.....'], ['.....', '..0..', '..0..', '..00.', '.....'], ['.....', '.....', '.000.', '.0...', '.....'], ['.....', '.00..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:56,018 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:57,432 INFO:Episode 25/10000
+2025-06-03 20:40:57,432 INFO:Reward: -16.89
+2025-06-03 20:40:57,432 INFO:Score: 0
+2025-06-03 20:40:57,432 INFO:Lines Cleared: 0
+2025-06-03 20:40:57,432 INFO:Max Level: 1
+2025-06-03 20:40:57,432 INFO:Episode Length: 14
+2025-06-03 20:40:57,432 INFO:Epsilon: 0.141
+2025-06-03 20:40:57,432 INFO:Loss: 159.9423
+2025-06-03 20:40:57,432 INFO:
+2025-06-03 20:40:57,432 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:57,432 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:40:57,432 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:40:58,861 INFO:Episode 26/10000
+2025-06-03 20:40:58,861 INFO:Reward: -17.39
+2025-06-03 20:40:58,861 INFO:Score: 0
+2025-06-03 20:40:58,861 INFO:Lines Cleared: 0
+2025-06-03 20:40:58,861 INFO:Max Level: 1
+2025-06-03 20:40:58,861 INFO:Episode Length: 14
+2025-06-03 20:40:58,861 INFO:Epsilon: 0.131
+2025-06-03 20:40:58,861 INFO:Loss: 206.6551
+2025-06-03 20:40:58,861 INFO:
+2025-06-03 20:40:58,861 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:40:58,861 DEBUG:RESET: Spawn piece: shape=[['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:40:58,861 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:00,902 INFO:Episode 27/10000
+2025-06-03 20:41:00,902 INFO:Reward: -15.49
+2025-06-03 20:41:00,902 INFO:Score: 0
+2025-06-03 20:41:00,902 INFO:Lines Cleared: 0
+2025-06-03 20:41:00,902 INFO:Max Level: 1
+2025-06-03 20:41:00,902 INFO:Episode Length: 20
+2025-06-03 20:41:00,902 INFO:Epsilon: 0.119
+2025-06-03 20:41:00,902 INFO:Loss: 242.0688
+2025-06-03 20:41:00,902 INFO:
+2025-06-03 20:41:00,902 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:00,903 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:41:00,903 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:02,935 INFO:Episode 28/10000
+2025-06-03 20:41:02,935 INFO:Reward: -15.59
+2025-06-03 20:41:02,935 INFO:Score: 0
+2025-06-03 20:41:02,935 INFO:Lines Cleared: 0
+2025-06-03 20:41:02,935 INFO:Max Level: 1
+2025-06-03 20:41:02,935 INFO:Episode Length: 20
+2025-06-03 20:41:02,935 INFO:Epsilon: 0.107
+2025-06-03 20:41:02,935 INFO:Loss: 309.7399
+2025-06-03 20:41:02,935 INFO:
+2025-06-03 20:41:02,936 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:02,936 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '0000.', '.....', '.....'], ['..0..', '..0..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:02,936 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:04,597 INFO:Episode 29/10000
+2025-06-03 20:41:04,597 INFO:Reward: -16.47
+2025-06-03 20:41:04,597 INFO:Score: 0
+2025-06-03 20:41:04,597 INFO:Lines Cleared: 0
+2025-06-03 20:41:04,597 INFO:Max Level: 1
+2025-06-03 20:41:04,597 INFO:Episode Length: 16
+2025-06-03 20:41:04,597 INFO:Epsilon: 0.099
+2025-06-03 20:41:04,597 INFO:Loss: 348.0563
+2025-06-03 20:41:04,597 INFO:
+2025-06-03 20:41:04,597 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:04,597 DEBUG:RESET: Spawn piece: shape=[['.....', '...0.', '.000.', '.....', '.....'], ['.....', '..0..', '..0..', '..00.', '.....'], ['.....', '.....', '.000.', '.0...', '.....'], ['.....', '.00..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:04,597 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:06,223 INFO:Episode 30/10000
+2025-06-03 20:41:06,223 INFO:Reward: -16.60
+2025-06-03 20:41:06,223 INFO:Score: 0
+2025-06-03 20:41:06,223 INFO:Lines Cleared: 0
+2025-06-03 20:41:06,223 INFO:Max Level: 1
+2025-06-03 20:41:06,223 INFO:Episode Length: 16
+2025-06-03 20:41:06,223 INFO:Epsilon: 0.092
+2025-06-03 20:41:06,223 INFO:Loss: 437.7083
+2025-06-03 20:41:06,223 INFO:
+2025-06-03 20:41:06,224 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:06,224 DEBUG:RESET: Spawn piece: shape=[['.....', '...0.', '.000.', '.....', '.....'], ['.....', '..0..', '..0..', '..00.', '.....'], ['.....', '.....', '.000.', '.0...', '.....'], ['.....', '.00..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:06,224 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:08,223 INFO:Episode 31/10000
+2025-06-03 20:41:08,223 INFO:Reward: -15.25
+2025-06-03 20:41:08,223 INFO:Score: 0
+2025-06-03 20:41:08,223 INFO:Lines Cleared: 0
+2025-06-03 20:41:08,223 INFO:Max Level: 1
+2025-06-03 20:41:08,223 INFO:Episode Length: 20
+2025-06-03 20:41:08,223 INFO:Epsilon: 0.083
+2025-06-03 20:41:08,223 INFO:Loss: 520.8583
+2025-06-03 20:41:08,223 INFO:
+2025-06-03 20:41:08,224 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:08,224 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:41:08,224 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:10,942 INFO:Episode 32/10000
+2025-06-03 20:41:10,943 INFO:Reward: -66.28
+2025-06-03 20:41:10,943 INFO:Score: 0
+2025-06-03 20:41:10,943 INFO:Lines Cleared: 0
+2025-06-03 20:41:10,943 INFO:Max Level: 1
+2025-06-03 20:41:10,943 INFO:Episode Length: 27
+2025-06-03 20:41:10,943 INFO:Epsilon: 0.072
+2025-06-03 20:41:10,943 INFO:Loss: 593.2973
+2025-06-03 20:41:10,943 INFO:
+2025-06-03 20:41:10,943 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:10,943 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '0000.', '.....', '.....'], ['..0..', '..0..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:10,943 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:12,574 INFO:Episode 33/10000
+2025-06-03 20:41:12,574 INFO:Reward: -16.65
+2025-06-03 20:41:12,574 INFO:Score: 0
+2025-06-03 20:41:12,574 INFO:Lines Cleared: 0
+2025-06-03 20:41:12,574 INFO:Max Level: 1
+2025-06-03 20:41:12,574 INFO:Episode Length: 16
+2025-06-03 20:41:12,574 INFO:Epsilon: 0.067
+2025-06-03 20:41:12,574 INFO:Loss: 715.2290
+2025-06-03 20:41:12,574 INFO:
+2025-06-03 20:41:12,574 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:12,574 DEBUG:RESET: Spawn piece: shape=[['.....', '.0...', '.000.', '.....', '.....'], ['.....', '..00.', '..0..', '..0..', '.....'], ['.....', '.....', '.000.', '...0.', '.....'], ['.....', '..0..', '..0..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:41:12,574 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:14,403 INFO:Episode 34/10000
+2025-06-03 20:41:14,403 INFO:Reward: -15.58
+2025-06-03 20:41:14,403 INFO:Score: 0
+2025-06-03 20:41:14,403 INFO:Lines Cleared: 0
+2025-06-03 20:41:14,403 INFO:Max Level: 1
+2025-06-03 20:41:14,403 INFO:Episode Length: 18
+2025-06-03 20:41:14,403 INFO:Epsilon: 0.061
+2025-06-03 20:41:14,403 INFO:Loss: 888.8680
+2025-06-03 20:41:14,403 INFO:
+2025-06-03 20:41:14,403 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:14,403 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:41:14,403 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:16,780 INFO:Episode 35/10000
+2025-06-03 20:41:16,781 INFO:Reward: -13.56
+2025-06-03 20:41:16,781 INFO:Score: 0
+2025-06-03 20:41:16,781 INFO:Lines Cleared: 0
+2025-06-03 20:41:16,781 INFO:Max Level: 1
+2025-06-03 20:41:16,781 INFO:Episode Length: 23
+2025-06-03 20:41:16,781 INFO:Epsilon: 0.054
+2025-06-03 20:41:16,781 INFO:Loss: 1128.4067
+2025-06-03 20:41:16,781 INFO:
+2025-06-03 20:41:16,781 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:16,781 DEBUG:RESET: Spawn piece: shape=[['.....', '.0...', '.000.', '.....', '.....'], ['.....', '..00.', '..0..', '..0..', '.....'], ['.....', '.....', '.000.', '...0.', '.....'], ['.....', '..0..', '..0..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:41:16,781 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:18,400 INFO:Episode 36/10000
+2025-06-03 20:41:18,400 INFO:Reward: -16.31
+2025-06-03 20:41:18,400 INFO:Score: 0
+2025-06-03 20:41:18,400 INFO:Lines Cleared: 0
+2025-06-03 20:41:18,400 INFO:Max Level: 1
+2025-06-03 20:41:18,400 INFO:Episode Length: 16
+2025-06-03 20:41:18,400 INFO:Epsilon: 0.050
+2025-06-03 20:41:18,400 INFO:Loss: 1149.9771
+2025-06-03 20:41:18,400 INFO:
+2025-06-03 20:41:18,400 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:18,400 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:41:18,400 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:20,011 INFO:Episode 37/10000
+2025-06-03 20:41:20,012 INFO:Reward: -16.62
+2025-06-03 20:41:20,012 INFO:Score: 0
+2025-06-03 20:41:20,012 INFO:Lines Cleared: 0
+2025-06-03 20:41:20,012 INFO:Max Level: 1
+2025-06-03 20:41:20,012 INFO:Episode Length: 16
+2025-06-03 20:41:20,012 INFO:Epsilon: 0.046
+2025-06-03 20:41:20,012 INFO:Loss: 1557.6058
+2025-06-03 20:41:20,012 INFO:
+2025-06-03 20:41:20,012 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:20,013 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:41:20,013 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:21,423 INFO:Episode 38/10000
+2025-06-03 20:41:21,423 INFO:Reward: -16.67
+2025-06-03 20:41:21,423 INFO:Score: 0
+2025-06-03 20:41:21,423 INFO:Lines Cleared: 0
+2025-06-03 20:41:21,423 INFO:Max Level: 1
+2025-06-03 20:41:21,423 INFO:Episode Length: 14
+2025-06-03 20:41:21,423 INFO:Epsilon: 0.043
+2025-06-03 20:41:21,423 INFO:Loss: 1692.0995
+2025-06-03 20:41:21,423 INFO:
+2025-06-03 20:41:21,423 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:21,423 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:41:21,423 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:23,738 INFO:Episode 39/10000
+2025-06-03 20:41:23,738 INFO:Reward: -17.15
+2025-06-03 20:41:23,738 INFO:Score: 0
+2025-06-03 20:41:23,738 INFO:Lines Cleared: 0
+2025-06-03 20:41:23,738 INFO:Max Level: 1
+2025-06-03 20:41:23,738 INFO:Episode Length: 14
+2025-06-03 20:41:23,738 INFO:Epsilon: 0.040
+2025-06-03 20:41:23,738 INFO:Loss: 1992.1118
+2025-06-03 20:41:23,738 INFO:
+2025-06-03 20:41:23,738 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:23,738 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:41:23,738 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:24,740 INFO:Episode 40/10000
+2025-06-03 20:41:24,740 INFO:Reward: -17.61
+2025-06-03 20:41:24,740 INFO:Score: 0
+2025-06-03 20:41:24,740 INFO:Lines Cleared: 0
+2025-06-03 20:41:24,740 INFO:Max Level: 1
+2025-06-03 20:41:24,740 INFO:Episode Length: 10
+2025-06-03 20:41:24,741 INFO:Epsilon: 0.038
+2025-06-03 20:41:24,741 INFO:Loss: 1807.1462
+2025-06-03 20:41:24,741 INFO:
+2025-06-03 20:41:24,741 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:24,741 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:41:24,741 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:25,765 INFO:Episode 41/10000
+2025-06-03 20:41:25,765 INFO:Reward: -18.04
+2025-06-03 20:41:25,765 INFO:Score: 0
+2025-06-03 20:41:25,765 INFO:Lines Cleared: 0
+2025-06-03 20:41:25,765 INFO:Max Level: 1
+2025-06-03 20:41:25,765 INFO:Episode Length: 10
+2025-06-03 20:41:25,765 INFO:Epsilon: 0.036
+2025-06-03 20:41:25,765 INFO:Loss: 2094.7327
+2025-06-03 20:41:25,765 INFO:
+2025-06-03 20:41:25,765 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:25,765 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:41:25,765 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:27,069 INFO:Episode 42/10000
+2025-06-03 20:41:27,070 INFO:Reward: -17.21
+2025-06-03 20:41:27,070 INFO:Score: 0
+2025-06-03 20:41:27,070 INFO:Lines Cleared: 0
+2025-06-03 20:41:27,070 INFO:Max Level: 1
+2025-06-03 20:41:27,070 INFO:Episode Length: 13
+2025-06-03 20:41:27,070 INFO:Epsilon: 0.034
+2025-06-03 20:41:27,070 INFO:Loss: 2161.3984
+2025-06-03 20:41:27,070 INFO:
+2025-06-03 20:41:27,070 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:27,070 DEBUG:RESET: Spawn piece: shape=[['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:27,070 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:28,592 INFO:Episode 43/10000
+2025-06-03 20:41:28,592 INFO:Reward: -16.87
+2025-06-03 20:41:28,592 INFO:Score: 0
+2025-06-03 20:41:28,592 INFO:Lines Cleared: 0
+2025-06-03 20:41:28,592 INFO:Max Level: 1
+2025-06-03 20:41:28,592 INFO:Episode Length: 15
+2025-06-03 20:41:28,592 INFO:Epsilon: 0.032
+2025-06-03 20:41:28,592 INFO:Loss: 2698.0931
+2025-06-03 20:41:28,592 INFO:
+2025-06-03 20:41:28,592 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:28,592 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:41:28,593 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:30,099 INFO:Episode 44/10000
+2025-06-03 20:41:30,099 INFO:Reward: -16.50
+2025-06-03 20:41:30,099 INFO:Score: 0
+2025-06-03 20:41:30,099 INFO:Lines Cleared: 0
+2025-06-03 20:41:30,099 INFO:Max Level: 1
+2025-06-03 20:41:30,099 INFO:Episode Length: 15
+2025-06-03 20:41:30,099 INFO:Epsilon: 0.029
+2025-06-03 20:41:30,099 INFO:Loss: 2774.4274
+2025-06-03 20:41:30,099 INFO:
+2025-06-03 20:41:30,099 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:30,099 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:41:30,100 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:31,504 INFO:Episode 45/10000
+2025-06-03 20:41:31,504 INFO:Reward: -16.80
+2025-06-03 20:41:31,504 INFO:Score: 0
+2025-06-03 20:41:31,504 INFO:Lines Cleared: 0
+2025-06-03 20:41:31,504 INFO:Max Level: 1
+2025-06-03 20:41:31,504 INFO:Episode Length: 14
+2025-06-03 20:41:31,504 INFO:Epsilon: 0.027
+2025-06-03 20:41:31,504 INFO:Loss: 2892.9329
+2025-06-03 20:41:31,504 INFO:
+2025-06-03 20:41:31,504 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:31,504 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:41:31,504 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:32,521 INFO:Episode 46/10000
+2025-06-03 20:41:32,521 INFO:Reward: -17.83
+2025-06-03 20:41:32,521 INFO:Score: 0
+2025-06-03 20:41:32,521 INFO:Lines Cleared: 0
+2025-06-03 20:41:32,521 INFO:Max Level: 1
+2025-06-03 20:41:32,521 INFO:Episode Length: 10
+2025-06-03 20:41:32,521 INFO:Epsilon: 0.026
+2025-06-03 20:41:32,522 INFO:Loss: 3600.5670
+2025-06-03 20:41:32,522 INFO:
+2025-06-03 20:41:32,522 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:32,522 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:41:32,522 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:34,248 INFO:Episode 47/10000
+2025-06-03 20:41:34,249 INFO:Reward: -16.14
+2025-06-03 20:41:34,249 INFO:Score: 0
+2025-06-03 20:41:34,249 INFO:Lines Cleared: 0
+2025-06-03 20:41:34,249 INFO:Max Level: 1
+2025-06-03 20:41:34,249 INFO:Episode Length: 17
+2025-06-03 20:41:34,249 INFO:Epsilon: 0.024
+2025-06-03 20:41:34,249 INFO:Loss: 3704.1590
+2025-06-03 20:41:34,249 INFO:
+2025-06-03 20:41:34,249 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:34,249 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:41:34,249 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:35,659 INFO:Episode 48/10000
+2025-06-03 20:41:35,659 INFO:Reward: -16.74
+2025-06-03 20:41:35,659 INFO:Score: 0
+2025-06-03 20:41:35,659 INFO:Lines Cleared: 0
+2025-06-03 20:41:35,659 INFO:Max Level: 1
+2025-06-03 20:41:35,659 INFO:Episode Length: 14
+2025-06-03 20:41:35,659 INFO:Epsilon: 0.022
+2025-06-03 20:41:35,659 INFO:Loss: 3980.6249
+2025-06-03 20:41:35,659 INFO:
+2025-06-03 20:41:35,660 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:35,660 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '0000.', '.....', '.....'], ['..0..', '..0..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:35,660 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:37,167 INFO:Episode 49/10000
+2025-06-03 20:41:37,167 INFO:Reward: -16.58
+2025-06-03 20:41:37,167 INFO:Score: 0
+2025-06-03 20:41:37,167 INFO:Lines Cleared: 0
+2025-06-03 20:41:37,167 INFO:Max Level: 1
+2025-06-03 20:41:37,167 INFO:Episode Length: 15
+2025-06-03 20:41:37,167 INFO:Epsilon: 0.021
+2025-06-03 20:41:37,167 INFO:Loss: 4392.8914
+2025-06-03 20:41:37,167 INFO:
+2025-06-03 20:41:37,168 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:37,168 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '0000.', '.....', '.....'], ['..0..', '..0..', '..0..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:37,168 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:39,088 INFO:Episode 50/10000
+2025-06-03 20:41:39,088 INFO:Reward: -14.27
+2025-06-03 20:41:39,088 INFO:Score: 0
+2025-06-03 20:41:39,088 INFO:Lines Cleared: 0
+2025-06-03 20:41:39,089 INFO:Max Level: 1
+2025-06-03 20:41:39,089 INFO:Episode Length: 19
+2025-06-03 20:41:39,089 INFO:Epsilon: 0.019
+2025-06-03 20:41:39,089 INFO:Loss: 5179.0253
+2025-06-03 20:41:39,089 INFO:
+2025-06-03 20:41:39,089 INFO:Evaluating agent at episode 50...
+2025-06-03 20:41:39,089 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:39,089 DEBUG:RESET: Spawn piece: shape=[['.....', '.0...', '.000.', '.....', '.....'], ['.....', '..00.', '..0..', '..0..', '.....'], ['.....', '.....', '.000.', '...0.', '.....'], ['.....', '..0..', '..0..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:41:39,089 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:39,107 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:39,107 DEBUG:RESET: Spawn piece: shape=[['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:39,107 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:39,125 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:39,125 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '..00.', '.....'], ['.....', '..0..', '.00..', '.0...', '.....']], pos=(5,-1)
+2025-06-03 20:41:39,125 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:39,143 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:39,143 DEBUG:RESET: Spawn piece: shape=[['.....', '..0..', '.000.', '.....', '.....'], ['.....', '..0..', '..00.', '..0..', '.....'], ['.....', '.....', '.000.', '..0..', '.....'], ['.....', '..0..', '.00..', '..0..', '.....']], pos=(5,-1)
+2025-06-03 20:41:39,143 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:39,161 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:39,161 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:41:39,161 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:39,179 INFO:Eval Rewards   – avg=-16.61, std=0.25, max=-16.27
+2025-06-03 20:41:39,179 INFO:Eval Scores    – avg=0.00, std=0.00, max=0.00
+2025-06-03 20:41:39,179 INFO:Eval Lines Cleared – max=0
+2025-06-03 20:41:39,179 INFO:
+2025-06-03 20:41:39,179 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:39,179 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '..00.', '.00..', '.....'], ['.....', '..0..', '..00.', '...0.', '.....']], pos=(5,-1)
+2025-06-03 20:41:39,179 DEBUG:RESET: Locked positions count=0
+2025-06-03 20:41:41,173 INFO:Episode 51/10000
+2025-06-03 20:41:41,174 INFO:Reward: -16.09
+2025-06-03 20:41:41,174 INFO:Score: 0
+2025-06-03 20:41:41,174 INFO:Lines Cleared: 0
+2025-06-03 20:41:41,174 INFO:Max Level: 1
+2025-06-03 20:41:41,174 INFO:Episode Length: 17
+2025-06-03 20:41:41,174 INFO:Epsilon: 0.017
+2025-06-03 20:41:41,174 INFO:Loss: 5326.7000
+2025-06-03 20:41:41,174 INFO:
+2025-06-03 20:41:41,174 DEBUG:RESET: Game reset. Episode steps set to 0
+2025-06-03 20:41:41,174 DEBUG:RESET: Spawn piece: shape=[['.....', '.....', '.00..', '.00..', '.....']], pos=(5,-1)
+2025-06-03 20:41:41,174 DEBUG:RESET: Locked positions count=0

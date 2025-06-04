@@ -18,10 +18,17 @@ def create_grid(locked_positions={}):
     return grid
 
 def check_lost(positions):
+    """Check if the game is lost.
+    
+    The game is lost when there are locked pieces above the spawn row (y < -1).
+    Pieces can be locked at y=-1 (spawn row) without triggering game over.
+    This allows pieces to spawn and lock at y=-1 while still detecting true game over
+    conditions when pieces stack above the spawn row.
+    """
     for pos in positions:
         x, y = pos
-        # only lose if a locked block is above row 0
-        if y < 0:
+        # Only lose if a locked block is above the spawn row (y < -1)
+        if y < -1:
             return True
     return False
 
