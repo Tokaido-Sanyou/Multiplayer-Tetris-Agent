@@ -53,7 +53,7 @@ def _collect_episodes(model_path: Path, episodes: int, device_str: str, headless
     trajectories: List[TrajectoryWithRew] = []
     for _ in range(episodes):
         obs, _ = env.reset()
-        traj_obs, traj_acts, traj_next_obs, traj_rews, traj_dones = [], [], [], [], []
+        traj_obs, traj_acts, traj_next_obs, traj_rews = [], [], [], []
         done = False
         while not done:
             act = dqn_action(model, env, device)
@@ -63,20 +63,18 @@ def _collect_episodes(model_path: Path, episodes: int, device_str: str, headless
             traj_next_obs.append(next_obs)
             traj_rews.append(rew)
             done_flag = term or trunc
-            traj_dones.append(done_flag)
             obs = next_obs
             done = done_flag
 
         # Add final observation after episode ends so len(obs)=len(acts)+1
         traj_obs.append(obs)
-        traj_dones.append(True)
 
         trajectories.append(
             TrajectoryWithRew(
                 obs=np.asarray(traj_obs, dtype=object),
                 acts=np.asarray(traj_acts, dtype=np.int64),
                 infos=None,
-                terminal=np.asarray(traj_dones, dtype=bool),
+                terminal=True,
                 rews=np.asarray(traj_rews, dtype=np.float32),
             )
         )
