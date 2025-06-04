@@ -23,7 +23,7 @@ class TetrisEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, single_player=False, headless=False):
+    def __init__(self, single_player=False, headless=False, max_steps=2500):
         super(TetrisEnv, self).__init__()
 
         # account for training without GUI
@@ -75,7 +75,7 @@ class TetrisEnv(gym.Env):
         
         # Initialize episode tracking
         self.episode_steps = 0
-        self.max_steps = 25000  # Maximum steps per episode
+        self.max_steps = max_steps  # Maximum steps per episode
         self.gravity_interval = 5  # agent steps per gravity drop
 
     def seed(self, seed=None):
