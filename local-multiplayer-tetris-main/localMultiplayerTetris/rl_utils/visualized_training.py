@@ -17,10 +17,12 @@ from collections import deque
 try:
     from .multiplayer_airl import MultiplayerAIRLTrainer
     from .actor_critic import ActorCritic
+    from .true_multiplayer_env import TrueMultiplayerTetrisEnv
 except ImportError:
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     from multiplayer_airl import MultiplayerAIRLTrainer
     from actor_critic import ActorCritic
+    from true_multiplayer_env import TrueMultiplayerTetrisEnv
 
 # Environment import
 try:
@@ -37,7 +39,7 @@ class VisualizedMultiplayerTrainer(MultiplayerAIRLTrainer):
         
         # Override environment with visualization enabled
         self.env.close()  # Close the headless environment
-        self.env = TetrisEnv(single_player=False, headless=False)
+        self.env = TrueMultiplayerTetrisEnv(headless=False)
         
         # Visualization settings
         self.render_delay = config.get('render_delay', 0.1)  # Delay between moves
@@ -57,14 +59,10 @@ class VisualizedMultiplayerTrainer(MultiplayerAIRLTrainer):
         
         # Reset environment
         observations = self.env.reset()
-        if isinstance(observations, tuple):
-            observations = observations[0]
         
-        # Handle observation format
-        if isinstance(observations, dict) and 'player1' in observations:
-            obs_p1, obs_p2 = observations['player1'], observations['player2']
-        else:
-            obs_p1 = obs_p2 = observations
+        # Always get proper multiplayer observations
+        obs_p1 = observations['player1']
+        obs_p2 = observations['player2']
         
         episode_data = []
         step_count = 0
@@ -93,27 +91,16 @@ class VisualizedMultiplayerTrainer(MultiplayerAIRLTrainer):
             if step_count % 10 == 0:  # Every 10 steps
                 print(f"Step {step_count:3d}: P1 action={action_p1:2d}, P2 action={action_p2:2d}")
             
-            # Handle action format for environment
-            if isinstance(observations, dict) and 'player1' in observations:
-                actions = {'player1': action_p1, 'player2': action_p2}
-            else:
-                actions = action_p1  # Single player fallback
+            # Always use multiplayer actions
+            actions = {'player1': action_p1, 'player2': action_p2}
                 
             # Take actions in environment
             step_result = self.env.step(actions)
+            next_observations, rewards, done, info = step_result
             
-            if len(step_result) == 4:
-                next_observations, rewards, done, info = step_result
-            else:
-                next_observations, rewards, done, truncated, info = step_result
-                done = done or truncated
-            
-            # Handle reward format
-            if isinstance(rewards, dict):
-                reward_p1 = rewards.get('player1', 0)
-                reward_p2 = rewards.get('player2', 0)
-            else:
-                reward_p1 = reward_p2 = rewards
+            # Always get proper multiplayer rewards
+            reward_p1 = rewards['player1']
+            reward_p2 = rewards['player2']
             
             episode_rewards['player1'] += reward_p1
             episode_rewards['player2'] += reward_p2
@@ -125,17 +112,14 @@ class VisualizedMultiplayerTrainer(MultiplayerAIRLTrainer):
             except:
                 pass  # Continue if rendering fails
             
-            # Handle next observations
-            if isinstance(next_observations, dict) and 'player1' in next_observations:
-                next_obs_p1 = next_observations['player1']
-                next_obs_p2 = next_observations['player2']
-            else:
-                next_obs_p1 = next_obs_p2 = next_observations
+            # Always get proper multiplayer observations
+            next_obs_p1 = next_observations['player1']
+            next_obs_p2 = next_observations['player2']
             
             # Determine game outcome
             game_outcome = 'draw'
             if done:
-                winner = info.get('winner', None) if isinstance(info, dict) else None
+                winner = info.get('winner')
                 if winner == 'player1':
                     game_outcome = 'player1_wins'
                     self.metrics['player1_wins'] += 1
@@ -145,6 +129,7 @@ class VisualizedMultiplayerTrainer(MultiplayerAIRLTrainer):
                     self.metrics['player2_wins'] += 1
                     print(f"🏆 Player 2 WINS! (Steps: {step_count})")
                 else:
+                    game_outcome = 'draw'
                     self.metrics['draws'] += 1
                     print(f"🤝 DRAW! (Steps: {step_count})")
             

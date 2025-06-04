@@ -23,9 +23,11 @@ except ImportError:
 # Environment import
 try:
     from ..tetris_env import TetrisEnv
+    from .true_multiplayer_env import TrueMultiplayerTetrisEnv
 except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from tetris_env import TetrisEnv
+    from true_multiplayer_env import TrueMultiplayerTetrisEnv
 
 class MultiplayerAIRLTrainer:
     """Simplified Multiplayer AIRL trainer for competitive dynamics."""
@@ -34,8 +36,8 @@ class MultiplayerAIRLTrainer:
         self.config = config
         self.device = torch.device(config.get('device', 'cpu'))
         
-        # Initialize environment
-        self.env = TetrisEnv(single_player=False, headless=True)
+        # Initialize TRUE multiplayer environment
+        self.env = TrueMultiplayerTetrisEnv(headless=True)
         
         # State and action dimensions
         self.state_dim = 207
@@ -85,16 +87,11 @@ class MultiplayerAIRLTrainer:
     def run_competitive_episode(self, max_steps=1000):
         """Run a competitive episode between two agents."""
         observations = self.env.reset()
-        if isinstance(observations, tuple):
-            observations = observations[0]
         
-        # Handle different observation formats
-        if isinstance(observations, dict) and 'player1' in observations:
-            obs_p1, obs_p2 = observations['player1'], observations['player2']
-        else:
-            # Fallback: assume single observation and duplicate for testing
-            self.logger.warning("Using single-player mode for multiplayer testing")
-            obs_p1 = obs_p2 = observations
+        # Now we always get proper multiplayer observations
+        obs_p1 = observations['player1']
+        obs_p2 = observations['player2']
+        
         episode_data = []
         step_count = 0
         
@@ -113,39 +110,29 @@ class MultiplayerAIRLTrainer:
                 action_probs_p2, _ = self.policy_p2(state_p2_tensor)
                 action_p2 = torch.multinomial(action_probs_p2, 1).item()
             
-            # Handle single vs multiplayer actions
-            if isinstance(observations, dict) and 'player1' in observations:
-                actions = {'player1': action_p1, 'player2': action_p2}
-            else:
-                actions = action_p1  # Single player fallback
+            # Always use multiplayer actions
+            actions = {'player1': action_p1, 'player2': action_p2}
                 
             step_result = self.env.step(actions)
+            next_observations, rewards, done, info = step_result
             
-            if len(step_result) == 4:
-                next_observations, rewards, done, info = step_result
-            else:
-                next_observations, rewards, done, truncated, info = step_result
-                done = done or truncated
-            
-            # Handle observation formats
-            if isinstance(next_observations, dict) and 'player1' in next_observations:
-                next_obs_p1 = next_observations['player1']
-                next_obs_p2 = next_observations['player2']
-                reward_p1 = rewards['player1'] if isinstance(rewards, dict) else rewards
-                reward_p2 = rewards['player2'] if isinstance(rewards, dict) else rewards
-            else:
-                next_obs_p1 = next_obs_p2 = next_observations
-                reward_p1 = reward_p2 = rewards if not isinstance(rewards, dict) else 0
+            # Always get proper multiplayer results
+            next_obs_p1 = next_observations['player1']
+            next_obs_p2 = next_observations['player2']
+            reward_p1 = rewards['player1']
+            reward_p2 = rewards['player2']
             
             game_outcome = 'draw'
             if done:
-                if info.get('winner') == 'player1':
+                winner = info.get('winner')
+                if winner == 'player1':
                     game_outcome = 'player1_wins'
                     self.metrics['player1_wins'] += 1
-                elif info.get('winner') == 'player2':
+                elif winner == 'player2':
                     game_outcome = 'player2_wins'
                     self.metrics['player2_wins'] += 1
                 else:
+                    game_outcome = 'draw'
                     self.metrics['draws'] += 1
             
             episode_data.append({
