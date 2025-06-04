@@ -215,26 +215,40 @@ def check_lost(positions):
 # =====================================================================================
 
 class DQN(nn.Module):
-    """Deep Q-Network for Tetris"""
+    """Ultra-Compact Deep Q-Network for Tetris with Tucking Support
+    
+    Features:
+    - Ultra-minimal conv layers: 1->4 channels max
+    - Support for tucking actions (x, y, rotation combinations)
+    - Action space: 10 (x) × 20 (y) × 4 (rotations) + 1 (hold) = 801 actions
+    - Compact metadata processing
+    """
     def __init__(self):
         super(DQN, self).__init__()
         
-        # Grid processing (CNN)
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        # Ultra-compact grid processing (1->4 channels max)
+        self.conv1 = nn.Conv2d(1, 4, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(4, 4, kernel_size=3, padding=1)
         
-        # Metadata processing (MLP)
-        self.fc1 = nn.Linear(7, 64)
-        self.fc2 = nn.Linear(64, 64)
+        # Global average pooling to reduce spatial dimensions dramatically
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         
-        # Combined processing
-        self.fc3 = nn.Linear(64 * 20 * 10 + 64, 512)
-        self.fc4 = nn.Linear(512, 256)
-        self.fc5 = nn.Linear(256, 41)  # 40 placements + 1 hold
+        # Compact metadata processing (7 values -> 8 features)
+        self.fc_meta = nn.Linear(7, 8)
+        
+        # Combined processing - ultra minimal
+        self.fc1 = nn.Linear(4 + 8, 32)  # conv features + metadata
+        self.fc2 = nn.Linear(32, 64)
+        self.fc3 = nn.Linear(64, 801)  # 10*20*4 + 1 = 801 actions (tucking + hold)
+        
+        # Minimal dropout
+        self.dropout = nn.Dropout(0.05)
         
         # Initialize weights
         self._init_weights()
+        
+        # Print parameter count
+        self._print_params()
     
     def _init_weights(self):
         """Initialize network weights using He initialization"""
@@ -244,6 +258,31 @@ class DQN(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
     
+    def _print_params(self):
+        """Print parameter count for verification"""
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        print(f"🔥 Ultra-Compact DQN Network: {total_params:,} total parameters ({trainable_params:,} trainable)")
+        print(f"   ✅ Minimal conv channels: 1→4 (as requested)")
+        print(f"   🎯 Action space: 10×20×4 + 1 = 801 actions (tucking support)")
+        
+        # Detailed breakdown
+        conv_params = sum(p.numel() for n, p in self.named_parameters() if 'conv' in n)
+        fc_params = sum(p.numel() for n, p in self.named_parameters() if 'fc' in n)
+        print(f"   📊 Parameter breakdown:")
+        print(f"      - Conv layers: {conv_params:,} parameters")
+        print(f"      - FC layers: {fc_params:,} parameters")
+        
+        # Layer-by-layer breakdown
+        print(f"   🔍 Layer details:")
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                print(f"      - {name}: {param.numel():,} parameters {list(param.shape)}")
+        
+        # Memory estimate
+        param_memory_mb = total_params * 4 / (1024 * 1024)  # 4 bytes per float32
+        print(f"   💾 Estimated model memory: {param_memory_mb:.2f} MB")
+    
     def forward(self, x):
         batch_size = x.size(0)
         
@@ -251,23 +290,26 @@ class DQN(nn.Module):
         grid = x[:, :200].view(batch_size, 1, 20, 10)
         metadata = x[:, 200:]
         
-        # Process grid
-        grid = F.relu(self.conv1(grid))
-        grid = F.relu(self.conv2(grid))
-        grid = F.relu(self.conv3(grid))
-        grid = grid.view(batch_size, -1)
+        # Process grid with ultra-compact CNN (1->4 channels)
+        grid = F.relu(self.conv1(grid))  # 1->4 channels
+        grid = F.relu(self.conv2(grid))  # 4->4 channels
         
-        # Process metadata
-        metadata = F.relu(self.fc1(metadata))
-        metadata = F.relu(self.fc2(metadata))
+        # Global average pooling to get fixed-size representation
+        grid = self.global_pool(grid)  # (batch_size, 4, 1, 1)
+        grid = grid.view(batch_size, -1)  # (batch_size, 4)
+        
+        # Process compact metadata  
+        metadata = F.relu(self.fc_meta(metadata))  # (batch_size, 8)
         
         # Combine features
-        combined = torch.cat([grid, metadata], dim=1)
+        combined = torch.cat([grid, metadata], dim=1)  # (batch_size, 12)
         
-        # Final processing
-        x = F.relu(self.fc3(combined))
-        x = F.relu(self.fc4(x))
-        q_values = self.fc5(x)
+        # Final processing through ultra-compact MLP
+        x = F.relu(self.fc1(combined))  # 12 -> 32
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))  # 32 -> 64
+        x = self.dropout(x)
+        q_values = self.fc3(x)  # 64 -> 801 actions
         
         return q_values
 
@@ -315,7 +357,18 @@ class ReplayBuffer:
 # =====================================================================================
 
 class TetrisEnv(gym.Env):
-    """Self-contained Tetris Environment"""
+    """Self-contained Tetris Environment with Tucking Support
+    
+    Action Space:
+    - Actions 0-799: Placement actions (x, y, rotation combinations)
+      - x: 0-9 (10 columns)
+      - y: 0-19 (20 rows) 
+      - rotation: 0-3 (4 rotations)
+      - action = x + y*10 + rotation*200
+    - Action 800: Hold action
+    
+    This allows pieces to be "tucked" into any valid position, not just dropped vertically.
+    """
     def __init__(self, single_player=True, headless=True):
         super(TetrisEnv, self).__init__()
         
@@ -323,12 +376,12 @@ class TetrisEnv(gym.Env):
         if not self.headless:
             pygame.init()
             self.surface = pygame.display.set_mode((400, 800))
-            pygame.display.set_caption("Tetris RL")
+            pygame.display.set_caption("Tetris RL with Tucking")
         else:
             self.surface = None
             
-        # Action space: 0-39 placement, 40 hold
-        self.action_space = spaces.Discrete(41)
+        # Updated action space: 10*20*4 + 1 = 801 actions (tucking + hold)
+        self.action_space = spaces.Discrete(801)
         
         # Observation space
         self.observation_space = spaces.Dict({
@@ -343,6 +396,27 @@ class TetrisEnv(gym.Env):
         })
         
         self.reset()
+    
+    def _decode_action(self, action):
+        """Decode action into (x, y, rotation) or 'hold'
+        
+        Args:
+            action: Integer action from 0-800
+            
+        Returns:
+            If action < 800: (x, y, rotation) tuple
+            If action == 800: 'hold'
+        """
+        if action == 800:
+            return 'hold'
+        
+        # Decode placement action
+        rotation = action // 200
+        remaining = action % 200
+        y = remaining // 10
+        x = remaining % 10
+        
+        return (x, y, rotation)
     
     def seed(self, seed=None):
         np.random.seed(seed)
@@ -398,7 +472,9 @@ class TetrisEnv(gym.Env):
         }
     
     def step(self, action):
-        if action == 40:  # Hold action
+        decoded = self._decode_action(action)
+        
+        if decoded == 'hold':  # Hold action
             if self.can_hold:
                 if self.hold_piece is None:
                     self.hold_piece = self.current_piece
@@ -411,39 +487,41 @@ class TetrisEnv(gym.Env):
                 self.can_hold = False
             reward = -0.01  # Small penalty for hold action
         else:
-            # Placement action
-            rotation = action // 10
-            column = action % 10
+            # Tucking placement action
+            x, y, rotation = decoded
             
-            # Try to place piece
-            test_piece = Piece(column, self.current_piece.y, self.current_piece.shape)
+            # Create test piece at specified position
+            test_piece = Piece(x, y, self.current_piece.shape)
             test_piece.rotation = rotation
             
-            # Drop piece down until it can't move further
-            while valid_space(test_piece, self.grid):
-                test_piece.y += 1
-            test_piece.y -= 1
-            
+            # Check if placement is valid
             if valid_space(test_piece, self.grid):
-                # Place the piece
+                # Place the piece at the specified location
                 piece_positions = convert_shape_format(test_piece)
-                for pos in piece_positions:
-                    if pos[1] >= 0:
+                
+                # Only place if all positions are above ground level
+                valid_placement = all(pos[1] >= 0 for pos in piece_positions)
+                
+                if valid_placement:
+                    # Place the piece
+                    for pos in piece_positions:
                         self.locked_positions[pos] = test_piece.color
-                
-                # Get new piece
-                self.current_piece = self.next_pieces.pop(0)
-                self.next_pieces.append(get_shape())
-                self.can_hold = True
-                
-                # Check for line clears
-                lines_cleared = self._clear_lines()
-                self.lines_cleared_total += lines_cleared
-                
-                # Calculate reward
-                reward = self._calculate_reward(lines_cleared, piece_positions)
+                    
+                    # Get new piece
+                    self.current_piece = self.next_pieces.pop(0)
+                    self.next_pieces.append(get_shape())
+                    self.can_hold = True
+                    
+                    # Check for line clears
+                    lines_cleared = self._clear_lines()
+                    self.lines_cleared_total += lines_cleared
+                    
+                    # Calculate reward with tucking bonus
+                    reward = self._calculate_reward(lines_cleared, piece_positions, y)
+                else:
+                    reward = -5  # Invalid placement (above grid)
             else:
-                reward = -10  # Invalid placement penalty
+                reward = -10  # Invalid placement (collision)
         
         # Check if game is over
         done = check_lost(self.locked_positions)
@@ -480,7 +558,14 @@ class TetrisEnv(gym.Env):
         
         return lines_cleared
     
-    def _calculate_reward(self, lines_cleared, new_positions):
+    def _calculate_reward(self, lines_cleared, new_positions, y):
+        """Calculate reward with tucking bonus
+        
+        Args:
+            lines_cleared: Number of lines cleared
+            new_positions: Positions where piece was placed
+            y: Y position where piece was placed (for tucking bonus)
+        """
         # Line clear rewards
         reward = 0
         if lines_cleared > 0:
@@ -496,6 +581,10 @@ class TetrisEnv(gym.Env):
         
         reward += 0.1 * (20 - max_height)  # Reward for keeping pieces low
         reward -= 0.5 * holes  # Penalty for holes
+        
+        # Tucking bonus - reward for placing pieces lower in the grid
+        tucking_bonus = 0.05 * y  # Small bonus for placing lower
+        reward += tucking_bonus
         
         return reward + 0.1  # Small step reward
     
@@ -569,9 +658,9 @@ class DQNAgent:
         print(f"DQN Agent initialized with TensorBoard logging to: {self.writer.log_dir}")
     
     def select_action(self, state):
-        """Select action using epsilon-greedy policy"""
+        """Select action using epsilon-greedy policy (801 action space)"""
         if random.random() < self.epsilon:
-            return random.randint(0, 40)
+            return random.randint(0, 800)  # Updated for 801 actions (0-800)
         
         with torch.no_grad():
             state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
@@ -579,7 +668,7 @@ class DQNAgent:
             return q_values.max(1)[1].item()
     
     def select_actions_batch(self, states):
-        """Select actions for batch of states"""
+        """Select actions for batch of states (801 action space)"""
         if isinstance(states, np.ndarray):
             states = torch.FloatTensor(states).to(self.device)
         
@@ -593,7 +682,7 @@ class DQNAgent:
         
         for i in range(batch_size):
             if random_mask[i]:
-                actions.append(random.randint(0, 40))
+                actions.append(random.randint(0, 800))  # Updated for 801 actions (0-800)
             else:
                 actions.append(greedy_actions[i])
         
