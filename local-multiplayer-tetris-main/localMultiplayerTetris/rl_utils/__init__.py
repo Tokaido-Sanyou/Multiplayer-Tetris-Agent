@@ -1,15 +1,17 @@
 """
 Reinforcement Learning utilities for Tetris
+
+Core DQN implementation with TensorBoard logging and parallel training support.
 """
 
-from .train import train_single_player, preprocess_state, evaluate_agent
-from .dqn_new import DQNAgent
-from .replay_buffer import ReplayBuffer
+# Only import modules that don't have circular dependencies
+from .dqn_new import DQNAgent, ReplayBuffer, DQN
 
 __all__ = [
-    'train_single_player',
-    'preprocess_state',
-    'evaluate_agent',
     'DQNAgent',
-    'ReplayBuffer'
-] 
+    'ReplayBuffer', 
+    'DQN'
+]
+
+# Version info
+__version__ = '1.0.0' 
