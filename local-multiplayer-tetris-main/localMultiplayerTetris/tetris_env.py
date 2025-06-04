@@ -3,10 +3,24 @@ import numpy as np
 from gym import spaces
 import pygame
 import random
-from .game import Game, Piece
-from .utils import create_grid, check_lost, count_holes
-from .piece_utils import valid_space, convert_shape_format
-from .constants import shapes, shape_colors, s_width, s_height
+# Module-based imports with fallbacks
+try:
+    from localMultiplayerTetris.game import Game, Piece
+    from localMultiplayerTetris.utils import create_grid, check_lost, count_holes
+    from localMultiplayerTetris.piece_utils import valid_space, convert_shape_format
+    from localMultiplayerTetris.constants import shapes, shape_colors, s_width, s_height
+except ImportError:
+    try:
+        from game import Game, Piece
+        from utils import create_grid, check_lost, count_holes
+        from piece_utils import valid_space, convert_shape_format
+        from constants import shapes, shape_colors, s_width, s_height
+    except ImportError:
+        # Fall back to relative imports
+        from .game import Game, Piece
+        from .utils import create_grid, check_lost, count_holes
+        from .piece_utils import valid_space, convert_shape_format
+        from .constants import shapes, shape_colors, s_width, s_height
 import time
 import logging
 

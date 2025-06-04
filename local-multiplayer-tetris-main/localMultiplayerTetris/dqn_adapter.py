@@ -25,10 +25,24 @@ import numpy as np
 import copy
 
 # Local imports
-from .utils import create_grid
-from .piece_utils import convert_shape_format, valid_space
-from .piece import Piece
-from .constants import shapes as SHAPES
+# Module-based imports with fallbacks
+try:
+    from localMultiplayerTetris.utils import create_grid
+    from localMultiplayerTetris.piece_utils import convert_shape_format, valid_space
+    from localMultiplayerTetris.piece import Piece
+    from localMultiplayerTetris.constants import shapes as SHAPES
+except ImportError:
+    try:
+        from utils import create_grid
+        from piece_utils import convert_shape_format, valid_space
+        from piece import Piece
+        from constants import shapes as SHAPES
+    except ImportError:
+        # Fall back to relative imports
+        from .utils import create_grid
+        from .piece_utils import convert_shape_format, valid_space
+        from .piece import Piece
+        from .constants import shapes as SHAPES
 
 Board = np.ndarray  # alias for clarity (20x10 of 0/1 ints)
 

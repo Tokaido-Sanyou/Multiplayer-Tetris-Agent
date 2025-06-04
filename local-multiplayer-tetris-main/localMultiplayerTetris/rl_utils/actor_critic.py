@@ -3,7 +3,15 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import time
-from .replay_buffer import ReplayBuffer
+
+# Module-based import with fallback
+try:
+    from localMultiplayerTetris.rl_utils.replay_buffer import ReplayBuffer
+except ImportError:
+    try:
+        from rl_utils.replay_buffer import ReplayBuffer
+    except ImportError:
+        from .replay_buffer import ReplayBuffer
 
 class SharedFeatureExtractor(nn.Module):
     """
