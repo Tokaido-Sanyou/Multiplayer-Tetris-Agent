@@ -6,7 +6,8 @@ Usage
 $ python -m localMultiplayerTetris.eval_pytorch_dqn \
         --model tetris-ai-master/sample_torch.pth \
         --episodes 20 \
-        --headless
+        --headless \
+        --runs 5  # Number of evaluation runs to aggregate
 
 Notes
 -----
@@ -20,11 +21,14 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List
+from typing import List, Dict
+from datetime import datetime
+import time
 
 import numpy as np
 import torch
 from torch import nn
+from torch.utils.tensorboard import SummaryWriter
 
 from .tetris_env import TetrisEnv
 from .dqn_adapter import enumerate_next_states
@@ -63,24 +67,31 @@ def load_model(pth_file: Path, device: torch.device = torch.device("cpu")) -> to
     return model
 
 
-def evaluate(model: torch.nn.Module, episodes: int = 10, headless: bool = True) -> List[float]:
+def evaluate(model: torch.nn.Module, episodes: int = 10, headless: bool = True, run_id: int = 0, writer: SummaryWriter = None) -> Dict:
+    """Run evaluation and return metrics dictionary."""
     device = next(model.parameters()).device
     env = TetrisEnv(single_player=True, headless=headless)
-    episode_rewards: List[float] = []
+    
+    metrics = {
+        'rewards': [],
+        'steps': [],
+        'lines': [],
+        'scores': []
+    }
 
     for ep in range(episodes):
         obs, _ = env.reset()
-        # initial render when windowed
         if not headless:
             env.render()
         done = False
         total_reward = 0.0
         step = 0
+        total_lines = 0
+        total_score = 0
+        
         while not done:
-            # Enumerate legal placements and their resulting 4-feature states
             mapping = enumerate_next_states(env)
             if not mapping:
-                # No legal moves (should not normally happen) – resign
                 break
             states = np.array(list(mapping.keys()), dtype=np.float32)
             with torch.no_grad():
@@ -88,20 +99,89 @@ def evaluate(model: torch.nn.Module, episodes: int = 10, headless: bool = True) 
             best_idx = int(torch.argmax(q_values))
             best_action = list(mapping.values())[best_idx]
 
-            obs, reward, terminated, truncated, _info = env.step(best_action)
-            # render frame when windowed
+            obs, reward, terminated, truncated, info = env.step(best_action)
+            total_lines += info.get('lines_cleared', 0)
+            total_score = info.get('score', total_score)
+            
             if not headless:
                 env.render()
             total_reward += reward
             done = terminated or truncated
             step += 1
-        episode_rewards.append(total_reward)
-        print(f"Episode {ep+1}/{episodes}: reward={total_reward:.1f} steps={step}")
+            
+        metrics['rewards'].append(total_reward)
+        metrics['steps'].append(step)
+        metrics['lines'].append(total_lines)
+        metrics['scores'].append(total_score)
+        
+        if writer:
+            # Log individual episode metrics under run
+            writer.add_scalar(f'Runs/Run_{run_id}/Reward', total_reward, ep)
+            writer.add_scalar(f'Runs/Run_{run_id}/Steps', step, ep)
+            writer.add_scalar(f'Runs/Run_{run_id}/LinesCleared', total_lines, ep)
+            writer.add_scalar(f'Runs/Run_{run_id}/Score', total_score, ep)
+        
+        print(f"Episode {ep+1}/{episodes}: reward={total_reward:.1f} steps={step} lines={total_lines} score={total_score}")
 
     env.close()
-    avg = sum(episode_rewards) / len(episode_rewards)
-    print(f"\nAverage reward over {episodes} episodes: {avg:.2f}")
-    return episode_rewards
+    return metrics
+
+def evaluate_multiple_runs(model: torch.nn.Module, episodes: int = 10, runs: int = 5, headless: bool = True) -> None:
+    """Run multiple evaluations and log aggregate statistics."""
+    # Setup tensorboard logging
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_dir = f'logs/dqn_eval_{timestamp}'
+    writer = SummaryWriter(log_dir=log_dir)
+    
+    all_metrics = []
+    
+    for run in range(runs):
+        print(f"\nStarting evaluation run {run + 1}/{runs}")
+        metrics = evaluate(model, episodes, headless, run, writer)
+        all_metrics.append(metrics)
+        
+        # Calculate and log run summary
+        run_avg_reward = np.mean(metrics['rewards'])
+        run_avg_lines = np.mean(metrics['lines'])
+        run_avg_score = np.mean(metrics['scores'])
+        run_avg_steps = np.mean(metrics['steps'])
+        
+        writer.add_scalar('Summary/RunAverages/Reward', run_avg_reward, run)
+        writer.add_scalar('Summary/RunAverages/LinesCleared', run_avg_lines, run)
+        writer.add_scalar('Summary/RunAverages/Score', run_avg_score, run)
+        writer.add_scalar('Summary/RunAverages/Steps', run_avg_steps, run)
+    
+    # Calculate aggregate statistics across all runs
+    all_rewards = np.concatenate([m['rewards'] for m in all_metrics])
+    all_lines = np.concatenate([m['lines'] for m in all_metrics])
+    all_scores = np.concatenate([m['scores'] for m in all_metrics])
+    all_steps = np.concatenate([m['steps'] for m in all_metrics])
+    
+    # Log final aggregate statistics
+    writer.add_scalar('Aggregate/Reward/Mean', np.mean(all_rewards), 0)
+    writer.add_scalar('Aggregate/Reward/Std', np.std(all_rewards), 0)
+    writer.add_scalar('Aggregate/LinesCleared/Mean', np.mean(all_lines), 0)
+    writer.add_scalar('Aggregate/LinesCleared/Std', np.std(all_lines), 0)
+    writer.add_scalar('Aggregate/Score/Mean', np.mean(all_scores), 0)
+    writer.add_scalar('Aggregate/Score/Std', np.std(all_scores), 0)
+    writer.add_scalar('Aggregate/Steps/Mean', np.mean(all_steps), 0)
+    writer.add_scalar('Aggregate/Steps/Std', np.std(all_steps), 0)
+    
+    # Add histograms for distributions
+    writer.add_histogram('Distributions/Rewards', all_rewards, 0)
+    writer.add_histogram('Distributions/LinesCleared', all_lines, 0)
+    writer.add_histogram('Distributions/Scores', all_scores, 0)
+    writer.add_histogram('Distributions/Steps', all_steps, 0)
+    
+    writer.close()
+    
+    # Print summary
+    print(f"\n=== Evaluation Summary ({runs} runs, {episodes} episodes each) ===")
+    print(f"Reward:        {np.mean(all_rewards):.1f} ± {np.std(all_rewards):.1f}")
+    print(f"Lines Cleared: {np.mean(all_lines):.1f} ± {np.std(all_lines):.1f}")
+    print(f"Score:         {np.mean(all_scores):.1f} ± {np.std(all_scores):.1f}")
+    print(f"Steps:         {np.mean(all_steps):.1f} ± {np.std(all_steps):.1f}")
+    print(f"\nTensorBoard logs: {log_dir}")
 
 
 def _garbage_from_lines(cleared: int) -> int:
@@ -125,6 +205,10 @@ def evaluate_duo(model_a: torch.nn.Module, model_b: torch.nn.Module, *, episodes
     """Pit two DQN agents against each other, sending garbage lines."""
     device = next(model_a.parameters()).device
     assert device == next(model_b.parameters()).device
+    
+    # Setup tensorboard logging
+    log_dir = f'logs/dqn_duo_eval_{datetime.now().strftime("%Y%m%d-%H%M%S")}'
+    writer = SummaryWriter(log_dir=log_dir)
 
     results = []
     for ep in range(episodes):
@@ -137,6 +221,8 @@ def evaluate_duo(model_a: torch.nn.Module, model_b: torch.nn.Module, *, episodes
 
         done_a = done_b = False
         step = 0
+        lines_a = lines_b = 0
+        
         while True:
             # --- Agent A turn -------------------------------------------------
             if not done_a:
@@ -151,6 +237,7 @@ def evaluate_duo(model_a: torch.nn.Module, model_b: torch.nn.Module, *, episodes
                     action = list(mapping.values())[best_idx]
                     _, _, term, trunc, info = env_a.step(action)
                     lines = info.get("lines_cleared", 0)
+                    lines_a += lines
                     garbage = _garbage_from_lines(lines)
                     if garbage > 0 and not done_b:
                         add_garbage_line(env_b.player.locked_positions, garbage)
@@ -173,6 +260,7 @@ def evaluate_duo(model_a: torch.nn.Module, model_b: torch.nn.Module, *, episodes
                     action = list(mapping.values())[best_idx]
                     _, _, term, trunc, info = env_b.step(action)
                     lines = info.get("lines_cleared", 0)
+                    lines_b += lines
                     garbage = _garbage_from_lines(lines)
                     if garbage > 0 and not done_a:
                         add_garbage_line(env_a.player.locked_positions, garbage)
@@ -192,14 +280,25 @@ def evaluate_duo(model_a: torch.nn.Module, model_b: torch.nn.Module, *, episodes
         score_a = env_a.player.score
         score_b = env_b.player.score
         results.append((score_a, score_b))
-        print(f"Episode {ep+1}: A_score={score_a}  B_score={score_b}  steps={step}")
+        
+        # Log metrics to tensorboard
+        writer.add_scalar('Eval/PlayerA/Score', score_a, ep)
+        writer.add_scalar('Eval/PlayerA/LinesCleared', lines_a, ep)
+        writer.add_scalar('Eval/PlayerB/Score', score_b, ep)
+        writer.add_scalar('Eval/PlayerB/LinesCleared', lines_b, ep)
+        writer.add_scalar('Eval/Steps', step, ep)
+        
+        print(f"Episode {ep+1}: A_score={score_a} A_lines={lines_a} B_score={score_b} B_lines={lines_b} steps={step}")
 
         env_a.close()
         env_b.close()
 
+    writer.close()
+
     avg_a = sum(s for s, _ in results) / episodes
     avg_b = sum(s for _, s in results) / episodes
     print(f"\nAverage  AgentA: {avg_a:.1f}   AgentB: {avg_b:.1f}")
+    print(f"TensorBoard logs: {log_dir}")
     return results
 
 
@@ -210,7 +309,8 @@ def evaluate_duo(model_a: torch.nn.Module, model_b: torch.nn.Module, *, episodes
 def _parse_args():
     p = argparse.ArgumentParser(description="Evaluate converted PyTorch DQN on TetrisEnv")
     p.add_argument("--model", type=Path, required=True, help="Path to .pth file from conversion script")
-    p.add_argument("--episodes", type=int, default=10, help="Number of evaluation episodes")
+    p.add_argument("--episodes", type=int, default=10, help="Number of evaluation episodes per run")
+    p.add_argument("--runs", type=int, default=5, help="Number of evaluation runs")
     p.add_argument("--cuda", action="store_true", help="Run on GPU if available")
     p.add_argument("--render", action="store_true", help="Render the game window (overrides --headless)")
     p.add_argument("--headless", action="store_true", help="Disable rendering")
@@ -236,7 +336,7 @@ def main():
         evaluate_duo(model_a, model_b, episodes=args.episodes, headless=headless)
     else:
         model = load_model(args.model, device)
-        evaluate(model, episodes=args.episodes, headless=headless)
+        evaluate_multiple_runs(model, episodes=args.episodes, runs=args.runs, headless=headless)
 
 
 if __name__ == "__main__":  # pragma: no cover
