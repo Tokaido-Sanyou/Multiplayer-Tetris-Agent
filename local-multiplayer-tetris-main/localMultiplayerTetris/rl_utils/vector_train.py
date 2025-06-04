@@ -267,8 +267,11 @@ def train_vectorized(num_envs=4, num_episodes=10000, save_interval=100, eval_int
     episode_scores = np.zeros(num_envs)
     # ... any other per-env metrics
 
-    # Global episode counter (counts episodes across all envs)
-    total_episodes_completed = 0
+    # Global episode counter (counts episodes across all envs), resume from checkpoint if provided
+    total_episodes_completed = agent.current_episode if checkpoint else 0
+    if checkpoint:
+        # adjust epsilon/gamma schedules based on resumed episodes
+        agent.update_schedules(total_episodes_completed)
     
     # Main loop runs for a total number of agent steps or episodes
     # For simplicity, let's use a large number of steps, assuming episodes will complete
