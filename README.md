@@ -8,12 +8,6 @@ This project implements AIRL (Adversarial Inverse Reinforcement Learning) for mu
 
 **🚀 NEW: Complete PyTorch Implementation** - All training modes consolidated into `pytorch_airl_complete.py` with no TensorFlow dependencies!
 
-**Key Features:**
-- ✅ **Multiple Training Modes**: Headless, visualized, and demo modes for different use cases
-- ✅ **TensorBoard Integration**: Comprehensive metrics logging for all training aspects
-- ✅ **Garbage Line Mechanics**: Competitive attacks with garbage lines between players 
-- ✅ **Real-time Visualization**: Live game rendering with pygame for both environments
-
 ## 🏗️ Architecture
 
 ```
@@ -92,28 +86,6 @@ tensorboard --logdir=logs
 
 # View training metrics at: http://localhost:6006
 ```
-
-The implementation logs comprehensive metrics to TensorBoard, including:
-
-1. **Training Metrics**:
-   - Discriminator loss and accuracy
-   - Policy loss and gradients
-   - Value function loss
-   - Average episode length and rewards
-
-2. **Game Performance**:
-   - Win rates in multiplayer mode
-   - Score progression
-   - Lines cleared per episode
-   - Action distribution
-
-3. **AIRL-Specific Metrics**:
-   - Expert-likeness scores
-   - Generated rewards vs environment rewards
-   - State-value estimates
-   - Advantage estimates
-
-TensorBoard logging is automatically enabled during all training modes and logs are saved to the `logs/` directory with timestamped subdirectories.
 
 ### Legacy Training Commands (Still Available)
 
@@ -204,21 +176,6 @@ The system uses `TrueMultiplayerTetrisEnv` which manages two independent TetrisE
 - Competitive reward shaping
 - Win/loss/draw detection
 - Real-time visualization support
-- Garbage line mechanics (competitive attack system)
-
-**Garbage Line Mechanics:**
-The multiplayer environment includes a fully implemented attack system where clearing lines sends "garbage" lines to the opponent:
-- Single line clear: No garbage sent
-- Double line clear: 1 garbage line
-- Triple line clear: 2 garbage lines
-- Tetris (4 lines): 4 garbage lines
-
-Garbage lines appear at the bottom of the opponent's board with a single random gap, forcing the player to clear them or risk reaching the top. This implementation can be found in:
-- `add_garbage_line()` function in `utils.py`/`game.py`
-- `get_garbage_lines()` method in `Game` class
-- `update_player()` method that triggers garbage line sending
-
-This competitive mechanic creates a direct attack vector between players, making the game truly adversarial as each player's actions impact the opponent's board state.
 
 ### Training Modes
 
@@ -344,27 +301,6 @@ Logs are saved in `logs/` directory:
 - `airl_demo.log`: Demonstration results
 - `tetris_debug.log`: Debug information
 
-### Visualization Modes
-
-The AIRL implementation includes three visualization modes:
-
-1. **Headless Mode**: Fast training without visualization, ideal for production training.
-   ```bash
-   python pytorch_airl_complete.py --mode headless --type [single|multiplayer]
-   ```
-
-2. **Visualized Mode**: Real-time pygame rendering of game state with metrics.
-   ```bash
-   python pytorch_airl_complete.py --mode visualized --type [single|multiplayer]
-   ```
-
-3. **Demo Mode**: Short visualization with detailed metrics for debugging.
-   ```bash
-   python pytorch_airl_complete.py --mode demo --type [single|multiplayer]
-   ```
-
-Visualization is handled in both the TetrisEnv environment and the SimpleTetrisEnv fallback environment, providing graphical interface even when the main environment is unavailable.
-
 ### Visualization Metrics
 
 Real-time display includes:
@@ -373,7 +309,6 @@ Real-time display includes:
 - Action diversity scores
 - Performance trends
 - Episode duration statistics
-- Current game state and piece placement
 
 ## 🧪 Testing & Validation
 
@@ -550,4 +485,61 @@ tensorboard --logdir=logs
 
 ---
 
-**Need Help?** Check the test suite, logs, or create an issue with your specific configuration and error messages. 
+**Need Help?** Check the test suite, logs, or create an issue with your specific configuration and error messages.
+
+## PyTorch Port
+
+The tetris-ai-master DQN implementation has been ported from Keras/TensorFlow to PyTorch. This eliminates TensorFlow dependency issues on Windows (particularly long path problems) and makes the expert policy more reliable.
+
+### Converting Keras Models to PyTorch
+
+Convert all Keras models in the project to PyTorch format:
+
+```bash
+python convert_keras_models.py
+```
+
+This will:
+1. Find all `.keras` and `.h5` files in the project
+2. Convert them to `.pth` PyTorch models
+3. Keep the original models intact
+
+### Verifying the PyTorch Implementation
+
+To verify that the PyTorch implementation works correctly:
+
+```bash
+python verify_pytorch_port.py
+```
+
+This will:
+1. Check if PyTorch is installed
+2. Convert the sample.keras model if needed
+3. Run a test game using the PyTorch model
+4. Verify that the LiveKerasExpertLoader works with PyTorch
+
+### Using the PyTorch DQN
+
+The system automatically uses PyTorch when available:
+
+1. `pytorch_dqn.py` provides the PyTorch implementation
+2. `dqn_agent.py` now imports from `pytorch_dqn.py` when available
+3. `LiveKerasExpertLoader` prefers `.pth` files over `.keras` files
+4. Both implementations provide the same API for seamless switching
+
+For running the original Keras model with PyTorch:
+```bash
+python tetris-ai-master/run_pytorch_model.py tetris-ai-master/sample.keras
+```
+
+### Dependencies
+
+Install PyTorch instead of TensorFlow:
+```bash
+pip install torch numpy
+```
+
+For model conversion (only needed once):
+```bash
+pip install h5py
+``` 

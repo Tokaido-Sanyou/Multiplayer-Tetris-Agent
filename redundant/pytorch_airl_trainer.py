@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-Complete PyTorch AIRL Implementation
-- Expert trajectory testing
-- Single-player and True Multiplayer training
-- Visualized/Headless training modes
-- TensorBoard logging  
-- No TensorFlow dependencies
+PyTorch AIRL Trainer with TensorBoard Logging
+Complete AIRL implementation without TensorFlow dependencies
 """
 
 import sys
@@ -21,203 +17,9 @@ from datetime import datetime
 import random
 from typing import Dict, List, Tuple, Optional
 import logging
-import argparse
 
-# Add paths for imports  
+# Add paths
 sys.path.append('local-multiplayer-tetris-main/localMultiplayerTetris')
-
-# Environment imports (simplified - matching working files)
-try:
-    from tetris_env import TetrisEnv
-    print("✅ TetrisEnv loaded successfully")
-    TETRIS_ENV_AVAILABLE = True
-except ImportError as e:
-    print(f"❌ TetrisEnv import failed: {e}")
-    TetrisEnv = None
-    TETRIS_ENV_AVAILABLE = False
-
-# Since the relative imports are broken, create a simple mock multiplayer environment
-class MockTrueMultiplayerTetrisEnv:
-    """Mock multiplayer environment using two independent SimpleTetrisEnv instances."""
-    
-    def __init__(self, headless=True):
-        self.headless = headless
-        
-        # Use real TetrisEnv if available, otherwise SimpleTetrisEnv
-        if TETRIS_ENV_AVAILABLE and TetrisEnv is not None:
-            try:
-                self.env_p1 = TetrisEnv(single_player=True, headless=True)
-                self.env_p2 = TetrisEnv(single_player=True, headless=True)
-                print("✅ Using real TetrisEnv for both players")
-            except Exception as e:
-                print(f"⚠️  TetrisEnv failed, using SimpleTetrisEnv: {e}")
-                self.env_p1 = SimpleTetrisEnv(headless=True)
-                self.env_p2 = SimpleTetrisEnv(headless=True)
-        else:
-            self.env_p1 = SimpleTetrisEnv(headless=True)
-            self.env_p2 = SimpleTetrisEnv(headless=True)
-            print("✅ Using SimpleTetrisEnv for both players")
-        
-        # Game state tracking
-        self.episode_steps = 0
-        self.max_steps = 1000
-        self.player1_alive = True
-        self.player2_alive = True
-        self.player1_score = 0
-        self.player2_score = 0
-        
-    def reset(self):
-        """Reset both player environments and return initial observations."""
-        obs_p1 = self.env_p1.reset()
-        obs_p2 = self.env_p2.reset()
-        
-        # Handle tuple format from gym environments
-        if isinstance(obs_p1, tuple):
-            obs_p1 = obs_p1[0]
-        if isinstance(obs_p2, tuple):
-            obs_p2 = obs_p2[0]
-        
-        # Reset game state
-        self.episode_steps = 0
-        self.player1_alive = True
-        self.player2_alive = True
-        self.player1_score = 0
-        self.player2_score = 0
-        
-        return {
-            'player1': obs_p1,
-            'player2': obs_p2
-        }
-    
-    def step(self, actions):
-        """Execute actions for both players simultaneously."""
-        self.episode_steps += 1
-        
-        action_p1 = actions.get('player1', 0)
-        action_p2 = actions.get('player2', 0)
-        
-        rewards = {'player1': 0, 'player2': 0}
-        observations = {}
-        info = {'player1': {}, 'player2': {}, 'winner': None}
-        
-        # Player 1 step
-        if self.player1_alive:
-            try:
-                step_result_p1 = self.env_p1.step(action_p1)
-                if len(step_result_p1) == 4:
-                    obs_p1, reward_p1, done_p1, info_p1 = step_result_p1
-                else:
-                    obs_p1, reward_p1, done_p1, truncated_p1, info_p1 = step_result_p1
-                    done_p1 = done_p1 or truncated_p1
-                
-                observations['player1'] = obs_p1
-                rewards['player1'] = reward_p1
-                info['player1'] = info_p1
-                
-                if done_p1:
-                    self.player1_alive = False
-                    
-            except Exception as e:
-                self.player1_alive = False
-                observations['player1'] = self._get_empty_observation()
-                rewards['player1'] = -50
-        else:
-            observations['player1'] = self._get_empty_observation()
-            rewards['player1'] = 0
-        
-        # Player 2 step  
-        if self.player2_alive:
-            try:
-                step_result_p2 = self.env_p2.step(action_p2)
-                if len(step_result_p2) == 4:
-                    obs_p2, reward_p2, done_p2, info_p2 = step_result_p2
-                else:
-                    obs_p2, reward_p2, done_p2, truncated_p2, info_p2 = step_result_p2
-                    done_p2 = done_p2 or truncated_p2
-                
-                observations['player2'] = obs_p2
-                rewards['player2'] = reward_p2
-                info['player2'] = info_p2
-                
-                if done_p2:
-                    self.player2_alive = False
-                    
-            except Exception as e:
-                self.player2_alive = False
-                observations['player2'] = self._get_empty_observation()
-                rewards['player2'] = -50
-        else:
-            observations['player2'] = self._get_empty_observation()
-            rewards['player2'] = 0
-        
-        # Determine episode completion and winner
-        episode_done = self._check_episode_complete()
-        winner = self._determine_winner()
-        info['winner'] = winner
-        
-        # Add competitive rewards
-        rewards = self._add_competitive_rewards(rewards, winner)
-        
-        return observations, rewards, episode_done, info
-    
-    def _check_episode_complete(self):
-        """Check if the episode should end."""
-        if not self.player1_alive and not self.player2_alive:
-            return True
-        if self.episode_steps >= self.max_steps:
-            return True
-        return False
-    
-    def _determine_winner(self):
-        """Determine the winner based on current game state."""
-        if not self.player1_alive and not self.player2_alive:
-            if self.player1_score > self.player2_score:
-                return 'player1'
-            elif self.player2_score > self.player1_score:
-                return 'player2'
-            else:
-                return 'draw'
-        elif not self.player1_alive:
-            return 'player2'
-        elif not self.player2_alive:
-            return 'player1'
-        else:
-            return 'ongoing'
-    
-    def _add_competitive_rewards(self, rewards, winner):
-        """Add competitive bonuses."""
-        if winner == 'player1':
-            rewards['player1'] += 10.0
-            rewards['player2'] -= 5.0
-        elif winner == 'player2':
-            rewards['player2'] += 10.0
-            rewards['player1'] -= 5.0
-        return rewards
-    
-    def _get_empty_observation(self):
-        """Get empty observation for eliminated players."""
-        return {
-            'grid': np.zeros((20, 10)),
-            'next_piece': 0,
-            'hold_piece': -1,
-            'current_shape': 0,
-            'current_rotation': 0,
-            'current_x': 5,
-            'current_y': 0,
-            'can_hold': True
-        }
-    
-    def close(self):
-        """Close both environments."""
-        if hasattr(self.env_p1, 'close'):
-            self.env_p1.close()
-        if hasattr(self.env_p2, 'close'):
-            self.env_p2.close()
-
-# Set up environment availability
-ENVS_AVAILABLE = True  # Mock multiplayer is always available
-TrueMultiplayerTetrisEnv = MockTrueMultiplayerTetrisEnv
-print("✅ Mock TrueMultiplayerTetrisEnv available")
 
 class PyTorchDiscriminator(nn.Module):
     """PyTorch-based AIRL Discriminator Network."""
@@ -313,11 +115,9 @@ class ExpertLoader:
     def load_trajectories(self) -> int:
         """Load expert trajectories from directory."""
         if not os.path.exists(self.trajectory_dir):
-            print(f"❌ Directory not found: {self.trajectory_dir}")
             return 0
         
         trajectory_files = [f for f in os.listdir(self.trajectory_dir) if f.endswith('.pkl')]
-        print(f"📂 Found {len(trajectory_files)} trajectory files")
         
         for filename in trajectory_files:
             filepath = os.path.join(self.trajectory_dir, filename)
@@ -360,10 +160,9 @@ class ExpertLoader:
                 self.trajectories.append(trajectory_data)
                 
             except Exception as e:
-                print(f"⚠️  Error loading {filename}: {e}")
+                print(f"Error loading {filename}: {e}")
                 continue
         
-        print(f"✅ Loaded {len(self.trajectories)} trajectories, {len(self.transitions)} transitions")
         return len(self.trajectories)
     
     def _extract_features(self, observation: Dict) -> np.ndarray:
@@ -414,218 +213,6 @@ class ExpertLoader:
             'next_states': next_states,
             'dones': dones
         }
-    
-    def get_statistics(self) -> Dict:
-        """Get statistics about loaded expert data."""
-        if not self.trajectories:
-            return {}
-        
-        total_rewards = [traj['total_reward'] for traj in self.trajectories]
-        episode_lengths = [traj['length'] for traj in self.trajectories]
-        
-        return {
-            'num_trajectories': len(self.trajectories),
-            'num_transitions': len(self.transitions),
-            'mean_reward': np.mean(total_rewards),
-            'std_reward': np.std(total_rewards),
-            'mean_episode_length': np.mean(episode_lengths),
-            'max_reward': np.max(total_rewards),
-            'min_reward': np.min(total_rewards)
-        }
-
-class SimpleTetrisEnv:
-    """Simplified Tetris environment for testing when TetrisEnv not available."""
-    
-    def __init__(self, headless=True):
-        self.state_dim = 207
-        self.action_dim = 41
-        self.headless = headless
-        
-    def reset(self):
-        """Reset to initial state."""
-        observation = {
-            'grid': np.zeros((20, 10)),
-            'next_piece': 0,
-            'hold_piece': -1,
-            'current_shape': 0,
-            'current_rotation': 0,
-            'current_x': 5,
-            'current_y': 0,
-            'can_hold': True
-        }
-        return observation
-    
-    def step(self, action):
-        """Take a step in the environment."""
-        # Simple mock step
-        next_obs = self.reset()  # Always reset for simplicity
-        reward = np.random.normal(10, 5)  # Random reward
-        done = np.random.random() < 0.02  # 2% chance of ending
-        info = {}
-        
-        return next_obs, reward, done, info
-
-class MultiplayerAIRLTrainer:
-    """AIRL Trainer for competitive multiplayer Tetris."""
-    
-    def __init__(self, config: Dict):
-        self.config = config
-        self.device = torch.device('cuda' if torch.cuda.is_available() and config.get('use_cuda', True) else 'cpu')
-        
-        # Initialize true multiplayer environment
-        if ENVS_AVAILABLE and TrueMultiplayerTetrisEnv is not None:
-            try:
-                self.env = TrueMultiplayerTetrisEnv(headless=config.get('headless', True))
-                print("✅ Using TrueMultiplayerTetrisEnv")
-            except Exception as e:
-                print(f"❌ Failed to initialize TrueMultiplayerTetrisEnv: {e}")
-                self.env = None
-                return
-        else:
-            print("❌ TrueMultiplayerTetrisEnv not available")
-            self.env = None
-            return
-        
-        # Dimensions
-        self.state_dim = 207
-        self.action_dim = 41
-        
-        # Initialize networks for both players
-        self.discriminator_p1 = PyTorchDiscriminator(self.state_dim, self.action_dim).to(self.device)
-        self.discriminator_p2 = PyTorchDiscriminator(self.state_dim, self.action_dim).to(self.device)
-        self.policy_p1 = PyTorchActorCritic(self.state_dim, self.action_dim).to(self.device)
-        self.policy_p2 = PyTorchActorCritic(self.state_dim, self.action_dim).to(self.device)
-        
-        # Optimizers
-        self.disc_opt_p1 = optim.Adam(self.discriminator_p1.parameters(), lr=config.get('discriminator_lr', 3e-4))
-        self.disc_opt_p2 = optim.Adam(self.discriminator_p2.parameters(), lr=config.get('discriminator_lr', 3e-4))
-        self.policy_opt_p1 = optim.Adam(self.policy_p1.parameters(), lr=config.get('policy_lr', 1e-4))
-        self.policy_opt_p2 = optim.Adam(self.policy_p2.parameters(), lr=config.get('policy_lr', 1e-4))
-        
-        # Expert loader
-        self.expert_loader = ExpertLoader(config.get('expert_trajectory_dir', 'expert_trajectories_dqn_adapter'))
-        
-        # TensorBoard logging
-        if config.get('use_tensorboard', True):
-            log_dir = os.path.join('logs', f"multiplayer_airl_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-            self.writer = SummaryWriter(log_dir)
-            print(f"📊 TensorBoard logs: {log_dir}")
-        else:
-            self.writer = None
-    
-    def train_competitive(self):
-        """Train two agents competitively using AIRL."""
-        print("🚀 STARTING COMPETITIVE MULTIPLAYER AIRL TRAINING")
-        print("=" * 70)
-        
-        # Check if environment is available
-        if self.env is None:
-            print("❌ No multiplayer environment available for training!")
-            return
-        
-        # Load expert trajectories
-        num_expert = self.expert_loader.load_trajectories()
-        if num_expert == 0:
-            print("❌ No expert trajectories loaded!")
-            return
-        
-        stats = self.expert_loader.get_statistics()
-        print(f"📊 Expert Statistics:")
-        for key, value in stats.items():
-            if isinstance(value, float):
-                print(f"   {key}: {value:.2f}")
-            else:
-                print(f"   {key}: {value}")
-        
-        max_episodes = self.config.get('max_episodes', 100)
-        total_steps = 0
-        
-        for episode in range(max_episodes):
-            print(f"\n🔄 Episode {episode + 1}/{max_episodes}")
-            
-            try:
-                # Reset environment
-                obs = self.env.reset()
-                
-                episode_rewards = {'player1': 0, 'player2': 0}
-                episode_steps = 0
-                
-                while episode_steps < self.config.get('max_episode_steps', 500):
-                    # Extract features for both players
-                    state_p1 = self._extract_features(obs['player1'])
-                    state_p2 = self._extract_features(obs['player2'])
-                    
-                    # Select actions
-                    action_p1 = self._select_action(state_p1, self.policy_p1)
-                    action_p2 = self._select_action(state_p2, self.policy_p2)
-                    
-                    # Step environment
-                    actions = {'player1': action_p1, 'player2': action_p2}
-                    next_obs, rewards, done, info = self.env.step(actions)
-                    
-                    episode_rewards['player1'] += rewards['player1']
-                    episode_rewards['player2'] += rewards['player2']
-                    
-                    obs = next_obs
-                    episode_steps += 1
-                    total_steps += 1
-                    
-                    if done:
-                        break
-                
-                # Log episode results
-                winner = info.get('winner', 'draw')
-                print(f"   Episode completed in {episode_steps} steps")
-                print(f"   P1 reward: {episode_rewards['player1']:.2f}")
-                print(f"   P2 reward: {episode_rewards['player2']:.2f}")
-                print(f"   Winner: {winner}")
-                
-                # TensorBoard logging
-                if self.writer:
-                    self.writer.add_scalar('Episode/P1_Reward', episode_rewards['player1'], episode)
-                    self.writer.add_scalar('Episode/P2_Reward', episode_rewards['player2'], episode)
-                    self.writer.add_scalar('Episode/Steps', episode_steps, episode)
-                    self.writer.add_scalar('Episode/Winner', 1 if winner == 'player1' else (-1 if winner == 'player2' else 0), episode)
-                    self.writer.add_scalar('Training/Total_Steps', total_steps, episode)
-                    
-            except Exception as e:
-                print(f"   ❌ Episode {episode + 1} failed: {e}")
-                continue
-        
-        print(f"\n✅ Competitive training completed!")
-        print(f"📊 Total steps executed: {total_steps}")
-        
-        if self.writer:
-            self.writer.close()
-    
-    def _extract_features(self, observation: Dict) -> np.ndarray:
-        """Extract features from environment observation."""
-        grid = observation['grid'].flatten()
-        next_piece = np.array([observation['next_piece']])
-        hold_piece = np.array([observation['hold_piece']])
-        current_shape = np.array([observation['current_shape']])
-        current_rotation = np.array([observation['current_rotation']])
-        current_x = np.array([observation['current_x']])
-        current_y = np.array([observation['current_y']])
-        can_hold = np.array([observation['can_hold']])
-        
-        features = np.concatenate([
-            grid, next_piece, hold_piece, current_shape,
-            current_rotation, current_x, current_y, can_hold
-        ]).astype(np.float32)
-        
-        return features
-    
-    def _select_action(self, state: np.ndarray, policy: PyTorchActorCritic) -> int:
-        """Select action using policy."""
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        
-        with torch.no_grad():
-            action_probs, _ = policy(state_tensor)
-            action_dist = torch.distributions.Categorical(action_probs)
-            action = action_dist.sample().item()
-        
-        return action
 
 class PyTorchAIRLTrainer:
     """Complete PyTorch AIRL Trainer with TensorBoard logging."""
@@ -635,16 +222,8 @@ class PyTorchAIRLTrainer:
         self.device = torch.device('cuda' if torch.cuda.is_available() and config.get('use_cuda', True) else 'cpu')
         
         # Initialize environment
-        if TETRIS_ENV_AVAILABLE and TetrisEnv is not None:
-            try:
-                self.env = TetrisEnv(single_player=True, headless=config.get('headless', True))
-                print("✅ Using real TetrisEnv")
-            except Exception as e:
-                print(f"⚠️  TetrisEnv failed, using SimpleTetrisEnv: {e}")
-                self.env = SimpleTetrisEnv(headless=config.get('headless', True))
-        else:
-            print("⚠️  TetrisEnv not available, using SimpleTetrisEnv")
-            self.env = SimpleTetrisEnv(headless=config.get('headless', True))
+        from tetris_env import TetrisEnv
+        self.env = TetrisEnv(single_player=True, headless=config.get('headless', True))
         
         # Dimensions
         self.state_dim = 207  # Full TetrisEnv observation
@@ -723,7 +302,6 @@ class PyTorchAIRLTrainer:
                 obs = obs[0]
             
             episode_transitions = []
-            episode_steps = 0
             
             for step in range(self.config.get('max_episode_steps', 500)):
                 # Extract features and select action
@@ -739,10 +317,6 @@ class PyTorchAIRLTrainer:
                     next_obs, reward, done, truncated, info = step_result
                 
                 done = done or truncated
-                
-                # Increment step counters
-                self.step_count += 1
-                episode_steps += 1
                 
                 # Store transition
                 next_state_features = self.extract_features(next_obs) if not done else np.zeros_like(state_features)
@@ -765,8 +339,6 @@ class PyTorchAIRLTrainer:
                 
                 if done:
                     break
-            
-            print(f"   Episode {episode + 1}: {episode_steps} steps, reward: {sum(t['reward'] for t in episode_transitions):.2f}")
             
             # Add to buffer
             self.learner_buffer.extend(episode_transitions)
@@ -896,23 +468,17 @@ class PyTorchAIRLTrainer:
         # Load expert trajectories
         num_expert_trajectories = self.expert_loader.load_trajectories()
         if num_expert_trajectories == 0:
-            print("❌ No expert trajectories loaded!")
-            return
+            raise ValueError("No expert trajectories loaded!")
         
-        # Get expert statistics
-        stats = self.expert_loader.get_statistics()
-        print(f"📊 Expert Statistics:")
-        for key, value in stats.items():
-            print(f"   {key}: {value}")
-        
+        print(f"📂 Loaded {num_expert_trajectories} expert trajectories")
         print(f"🎯 Device: {self.device}")
         print(f"📊 State dim: {self.state_dim}, Action dim: {self.action_dim}")
         
         # Training parameters
-        batch_size = self.config.get('batch_size', 32)
-        max_iterations = self.config.get('max_iterations', 50)
-        episodes_per_iteration = self.config.get('episodes_per_iteration', 3)
-        updates_per_iteration = self.config.get('updates_per_iteration', 5)
+        batch_size = self.config.get('batch_size', 64)
+        max_iterations = self.config.get('max_iterations', 1000)
+        episodes_per_iteration = self.config.get('episodes_per_iteration', 5)
+        updates_per_iteration = self.config.get('updates_per_iteration', 10)
         
         print(f"🔧 Batch size: {batch_size}, Max iterations: {max_iterations}")
         print(f"📈 Episodes per iteration: {episodes_per_iteration}")
@@ -920,7 +486,6 @@ class PyTorchAIRLTrainer:
         # Initial data collection
         print("\n📦 Collecting initial learner data...")
         self.collect_learner_data(episodes_per_iteration * 2)
-        print(f"   Buffer size: {len(self.learner_buffer)}")
         
         # Training loop
         for iteration in range(max_iterations):
@@ -995,125 +560,49 @@ class PyTorchAIRLTrainer:
         
         print(f"💾 Models saved: {discriminator_path}, {policy_path}")
 
-def test_expert_trajectories():
-    """Test expert trajectories loading."""
-    print("🧪 TESTING EXPERT TRAJECTORIES FOR AIRL")
-    print("=" * 60)
-    
-    expert_loader = ExpertLoader("expert_trajectories_dqn_adapter")
-    num_loaded = expert_loader.load_trajectories()
-    
-    if num_loaded == 0:
-        print("❌ No trajectories loaded!")
-        return False
-    
-    # Get statistics
-    stats = expert_loader.get_statistics()
-    print(f"\n📊 Expert Data Statistics:")
-    for key, value in stats.items():
-        if isinstance(value, float):
-            print(f"   {key}: {value:.2f}")
-        else:
-            print(f"   {key}: {value}")
-    
-    # Test sampling
-    print(f"\n🎯 Testing Expert Sampling:")
-    try:
-        expert_batch = expert_loader.get_batch(32, 'cpu')
-        print(f"   ✅ Batch sampling successful")
-        print(f"   States shape: {expert_batch['states'].shape}")
-        print(f"   Actions shape: {expert_batch['actions'].shape}")
-        
-        return True
-    except Exception as e:
-        print(f"   ❌ Sampling failed: {e}")
-        return False
-
-def create_training_config(mode: str = "visualized", training_type: str = "single") -> Dict:
+def create_training_config(visualized: bool = True) -> Dict:
     """Create training configuration."""
-    base_config = {
+    return {
         # Environment
         'expert_trajectory_dir': 'expert_trajectories_dqn_adapter',
+        'headless': not visualized,
         'max_episode_steps': 500,
         
         # Network parameters
         'discriminator_lr': 3e-4,
         'policy_lr': 1e-4,
         'gamma': 0.99,
-        'batch_size': 32,
+        'batch_size': 64,
         'buffer_size': 10000,
+        
+        # Training schedule
+        'max_iterations': 100 if visualized else 1000,
+        'episodes_per_iteration': 3 if visualized else 5,
+        'updates_per_iteration': 5 if visualized else 10,
         
         # Logging
         'use_tensorboard': True,
         'use_cuda': True,
     }
-    
-    # Mode-specific settings
-    if mode == "visualized":
-        base_config.update({
-            'headless': False,
-            'max_iterations': 20 if training_type == "single" else None,
-            'max_episodes': 20 if training_type == "multiplayer" else None,
-            'episodes_per_iteration': 2,
-            'updates_per_iteration': 3,
-        })
-    elif mode == "headless":
-        base_config.update({
-            'headless': True,
-            'max_iterations': 100 if training_type == "single" else None,
-            'max_episodes': 100 if training_type == "multiplayer" else None,
-            'episodes_per_iteration': 5,
-            'updates_per_iteration': 10,
-        })
-    elif mode == "demo":
-        base_config.update({
-            'headless': True,
-            'max_iterations': 5 if training_type == "single" else None,
-            'max_episodes': 10 if training_type == "multiplayer" else None,
-            'episodes_per_iteration': 2,
-            'updates_per_iteration': 2,
-        })
-    
-    return base_config
 
-def main():
-    """Main function with command line interface."""
-    parser = argparse.ArgumentParser(description='PyTorch AIRL Trainer')
-    parser.add_argument('--mode', choices=['test', 'visualized', 'headless', 'demo'], 
-                       default='demo', help='Training mode')
-    parser.add_argument('--type', choices=['single', 'multiplayer'], 
-                       default='single', help='Training type: single-player or multiplayer')
-    
-    args = parser.parse_args()
-    
-    # Handle testing mode
-    if args.mode == 'test':
-        print("🧪 Testing Expert Trajectories")
-        success = test_expert_trajectories()
-        if success:
-            print("\n✅ Expert trajectories ready for AIRL training!")
-        else:
-            print("\n❌ Issues found with expert trajectories")
-        return
-    
-    # Check environment availability
-    if not ENVS_AVAILABLE and args.type == 'multiplayer':
-        print("❌ Multiplayer training requires proper environment imports")
-        print("   Run from correct directory or fix import paths")
-        return
-    
-    # Training modes
-    config = create_training_config(args.mode, args.type)
-    
-    print(f"🚀 PYTORCH AIRL TRAINING - {args.mode.upper()} {args.type.upper()} MODE")
-    print("=" * 70)
-    
-    if args.type == 'multiplayer':
-        trainer = MultiplayerAIRLTrainer(config)
-        trainer.train_competitive()
-    else:
-        trainer = PyTorchAIRLTrainer(config)
-        trainer.train()
+def main_visualized():
+    """Run visualized AIRL training."""
+    print("🎮 VISUALIZED AIRL TRAINING")
+    config = create_training_config(visualized=True)
+    trainer = PyTorchAIRLTrainer(config)
+    trainer.train()
+
+def main_headless():
+    """Run headless AIRL training."""
+    print("⚡ HEADLESS AIRL TRAINING")
+    config = create_training_config(visualized=False)
+    trainer = PyTorchAIRLTrainer(config)
+    trainer.train()
 
 if __name__ == "__main__":
-    main() 
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "headless":
+        main_headless()
+    else:
+        main_visualized() 

@@ -1,20 +1,32 @@
-2025-06-04 03:23:07,483 INFO:Initialized True Multiplayer Tetris Environment
-2025-06-04 03:23:07,486 INFO:Initialized Multiplayer AIRL with device: cpu
-2025-06-04 03:23:07,567 INFO:Initialized True Multiplayer Tetris Environment
-2025-06-04 03:23:07,567 INFO:Initialized visualized multiplayer trainer
-2025-06-04 03:23:07,568 INFO:\U0001f3ac Starting visualized training for 5 episodes
-2025-06-04 03:23:07,569 INFO:\U0001f3ae Starting visualized episode 1
-2025-06-04 03:23:12,402 INFO:Player 1 eliminated at step 16
-2025-06-04 03:23:14,299 INFO:Player 2 eliminated at step 22
-2025-06-04 03:23:16,612 INFO:\U0001f3ae Starting visualized episode 2
-2025-06-04 03:23:22,322 INFO:Player 2 eliminated at step 19
-2025-06-04 03:23:22,957 INFO:Player 1 eliminated at step 21
-2025-06-04 03:23:25,269 INFO:\U0001f3ae Starting visualized episode 3
-2025-06-04 03:23:32,233 INFO:Player 2 eliminated at step 23
-2025-06-04 03:23:32,550 INFO:Player 1 eliminated at step 24
-2025-06-04 03:23:34,866 INFO:\U0001f3ae Starting visualized episode 4
-2025-06-04 03:23:40,567 INFO:Player 2 eliminated at step 19
-2025-06-04 03:23:41,832 INFO:Player 1 eliminated at step 23
-2025-06-04 03:23:44,144 INFO:\U0001f3ae Starting visualized episode 5
-2025-06-04 03:23:49,519 INFO:Player 1 eliminated at step 18
-2025-06-04 03:23:51,095 INFO:Player 2 eliminated at step 23
+2025-06-04 07:06:17,080 INFO:Successfully loaded PyTorch model from tetris-ai-master/sample.pth
+2025-06-04 07:06:17,082 INFO:Using TetrisEnv for trajectory generation (NO FALLBACKS)
+2025-06-04 07:06:17,083 INFO:PyTorch trajectory generator ready (NO FALLBACKS)
+2025-06-04 07:06:17,471 INFO:Generated episode 0: 24 steps, reward: 6.00
+2025-06-04 07:06:17,751 INFO:Generated episode 1: 21 steps, reward: 3.00
+2025-06-04 07:06:18,042 INFO:Generated episode 2: 22 steps, reward: 4.00
+2025-06-04 07:06:18,339 INFO:Generated episode 3: 21 steps, reward: 3.00
+2025-06-04 07:06:18,646 INFO:Generated episode 4: 21 steps, reward: 3.00
+2025-06-04 07:06:18,646 INFO:Successfully generated 5/5 trajectories
+2025-06-04 07:06:18,646 INFO:Generated 5 live PyTorch trajectories
+2025-06-04 07:06:18,647 INFO:Loaded trajectory pytorch_expert_episode_0000.pkl: 24 transitions
+2025-06-04 07:06:18,648 INFO:Loaded trajectory pytorch_expert_episode_0001.pkl: 21 transitions
+2025-06-04 07:06:18,649 INFO:Loaded trajectory pytorch_expert_episode_0002.pkl: 22 transitions
+2025-06-04 07:06:18,650 INFO:Loaded trajectory pytorch_expert_episode_0003.pkl: 21 transitions
+2025-06-04 07:06:18,651 INFO:Loaded trajectory pytorch_expert_episode_0004.pkl: 21 transitions
+2025-06-04 07:06:18,651 INFO:Loaded trajectory pytorch_expert_episode_0005.pkl: 20 transitions
+2025-06-04 07:06:18,651 INFO:Loaded trajectory pytorch_expert_episode_0006.pkl: 23 transitions
+2025-06-04 07:06:18,651 INFO:Loaded trajectory pytorch_expert_episode_0007.pkl: 22 transitions
+2025-06-04 07:06:18,652 INFO:Loaded trajectory pytorch_expert_episode_0008.pkl: 14 transitions
+2025-06-04 07:06:18,652 INFO:Loaded trajectory pytorch_expert_episode_0009.pkl: 21 transitions
+2025-06-04 07:06:18,653 INFO:Loaded trajectory pytorch_expert_episode_0010.pkl: 27 transitions
+2025-06-04 07:06:18,653 INFO:Loaded trajectory pytorch_expert_episode_0011.pkl: 17 transitions
+2025-06-04 07:06:18,654 INFO:Loaded trajectory pytorch_expert_episode_0012.pkl: 24 transitions
+2025-06-04 07:06:18,654 INFO:Loaded trajectory pytorch_expert_episode_0013.pkl: 23 transitions
+2025-06-04 07:06:18,655 INFO:Loaded trajectory pytorch_expert_episode_0014.pkl: 23 transitions
+2025-06-04 07:06:18,655 INFO:Loaded trajectory pytorch_expert_episode_0015.pkl: 15 transitions
+2025-06-04 07:06:18,656 INFO:Loaded trajectory pytorch_expert_episode_0016.pkl: 20 transitions
+2025-06-04 07:06:18,656 INFO:Loaded trajectory pytorch_expert_episode_0017.pkl: 21 transitions
+2025-06-04 07:06:18,657 INFO:Loaded trajectory pytorch_expert_episode_0018.pkl: 19 transitions
+2025-06-04 07:06:18,657 INFO:Loaded trajectory pytorch_expert_episode_0019.pkl: 16 transitions
+2025-06-04 07:06:18,657 INFO:Loaded 20 valid trajectories with 414 total transitions
+2025-06-04 07:06:18,657 INFO:Total transitions loaded: 414
