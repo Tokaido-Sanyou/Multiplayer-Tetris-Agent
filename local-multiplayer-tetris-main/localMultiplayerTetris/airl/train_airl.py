@@ -18,7 +18,10 @@ import numpy as np
 import torch
 from imitation.algorithms.adversarial import airl
 from imitation.data.types import TrajectoryWithRew
+from imitation.rewards.reward_nets import BasicShapedRewardNet
+from imitation.util.networks import RunningNorm
 from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 from ..tetris_env import TetrisEnv
 from datetime import datetime
@@ -53,7 +56,8 @@ def make_env(headless=True):
 def train_airl(demo_path: Path, timesteps: int, out_dir: Path, tb_dir: Path | None = None):
     demonstrations: list[TrajectoryWithRew] = load_demos(demo_path)
 
-    env = make_env(headless=True)
+    # Wrap environment in VecEnv as required by imitation library
+    venv = DummyVecEnv([lambda: make_env(headless=True)])
 
     # TensorBoard directory
     if tb_dir is None:
@@ -62,7 +66,7 @@ def train_airl(demo_path: Path, timesteps: int, out_dir: Path, tb_dir: Path | No
     # Generator (learner) policy with PPO
     learner = PPO(
         "MlpPolicy",
-        env,
+        venv,
         batch_size=4096,
         n_steps=2048,
         learning_rate=3e-4,
@@ -78,12 +82,20 @@ def train_airl(demo_path: Path, timesteps: int, out_dir: Path, tb_dir: Path | No
         run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
         writer = SummaryWriter(log_dir=str(tb_dir / run_name))
 
+    # Reward network for AIRL discriminator
+    reward_net = BasicShapedRewardNet(
+        observation_space=venv.observation_space,
+        action_space=venv.action_space,
+        normalize_input_layer=RunningNorm,
+    )
+
     # AIRL trainer
     airl_trainer = airl.AIRL(
         demonstrations=demonstrations,
-        expert_policy=None,
-        gen_policy=learner.policy,
-        env=env,
+        demo_batch_size=2048,
+        venv=venv,
+        gen_algo=learner,
+        reward_net=reward_net,
     )
 
     total_steps = 0

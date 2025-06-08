@@ -16,14 +16,33 @@ from pathlib import Path
 from typing import List
 import numpy as np
 import torch
+from torch import nn
 from imitation.data.types import TrajectoryWithRew
 
 from ..tetris_env import TetrisEnv
 from ..dqn_adapter import enumerate_next_states
-from ..eval_pytorch_dqn import build_torch_sequential  # util to rebuild network
 import multiprocessing as mp
 from functools import partial
 
+ACTIVATION_MAP = {
+    "relu": nn.ReLU(),
+    "sigmoid": nn.Sigmoid(),
+    "tanh": nn.Tanh(),
+    "linear": nn.Identity(),  # no-op
+}
+
+def build_torch_sequential(layer_sizes: List[int], activations: List[str]) -> nn.Sequential:
+    """Create a torch ``nn.Sequential`` mirroring the Keras architecture."""
+    layers: List[nn.Module] = []
+    for in_dim, out_dim, act_name in zip(layer_sizes[:-1], layer_sizes[1:], activations):
+        layers.append(nn.Linear(in_dim, out_dim))
+        act = ACTIVATION_MAP.get(act_name.lower())
+        if act is None:
+            raise ValueError(f"Unsupported activation '{act_name}'. Supported: {list(ACTIVATION_MAP)}")
+        # Skip final Identity if last layer is linear → keep output identical
+        if not (act_name.lower() == "linear" and out_dim == layer_sizes[-1]):
+            layers.append(act)
+    return nn.Sequential(*layers)
 
 def load_model(path: Path, device: torch.device = torch.device("cpu")) -> torch.nn.Module:
     """Load saved PyTorch model along with architecture metadata."""
@@ -76,7 +95,7 @@ def _collect_episodes(model_path: Path, episodes: int, device_str: str, headless
                 obs=np.asarray(traj_obs, dtype=object),
                 acts=np.asarray(traj_acts, dtype=np.int64),
                 infos=None,
-                terminal=np.asarray(traj_dones, dtype=bool),
+                terminal=True,
                 rews=np.asarray(traj_rews, dtype=np.float32),
             )
         )
@@ -91,7 +110,7 @@ def collect_trajectories_parallel(model_path: Path, episodes: int, output: Path,
         pbar = tqdm(total=episodes, desc="Collecting")
         all_traj = []
         for _ in range(episodes):
-            trajs = _collect_episodes(model_path, 1, str(device), True, 150)
+            trajs = _collect_episodes(model_path, 1, str(device), True, 250)
             all_traj.extend(trajs)
             pbar.update(1)
         pbar.close()
@@ -101,7 +120,7 @@ def collect_trajectories_parallel(model_path: Path, episodes: int, output: Path,
             chunks[i] += 1
 
         with mp.get_context("spawn").Pool(processes=workers) as pool:
-            func = partial(_collect_episodes, model_path, device_str=str(device), headless=True, max_steps=150)
+            func = partial(_collect_episodes, model_path, device_str=str(device), headless=True, max_steps=250)
             pbar = tqdm(total=episodes, desc="Collecting")
             all_traj = []
             for sub in pool.imap_unordered(func, chunks):
