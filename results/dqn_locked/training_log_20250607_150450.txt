@@ -1,0 +1,40 @@
+[15:04:50] DQN Locked State Training Started
+[15:04:50] Device: cuda
+[15:04:50] Action space: 1600
+[15:04:50] State space: 585
+[15:04:50] ================================================================================
+[15:04:50] STARTING COMPREHENSIVE DQN LOCKED STATE TRAINING
+[15:04:50] ================================================================================
+[15:04:50] Total episodes: 100
+[15:04:50] Episodes per batch: 10
+[15:04:50] Total batches: 10
+[15:04:50] ================================================================================
+[15:04:50] 
+🔄 BATCH 1/10 - Training 10 episodes...
+[15:05:03]    Episode 1: Reward -150.50, Steps 12, Loss 3.9028, Q-val 0.01, ε 0.985
+[15:06:00]    Episode 6: Reward -151.50, Steps 9, Loss 10.7262, Q-val -0.07, ε 0.912
+[15:06:42]    Episode 10: Reward -187.50, Steps 14, Loss 12.4128, Q-val -0.21, ε 0.859
+[15:06:42] 
+📈 BATCH 1 SUMMARY:
+[15:06:42]    Average Reward: -165.35
+[15:06:42]    Average Length: 11.4
+[15:06:42]    Average Loss: 11.7442
+[15:06:42]    Average Q-Value: -0.07
+[15:06:42]    Current Epsilon: 0.8589
+[15:06:42]    Batch Time: 111.2s
+[15:06:42]    🏆 NEW BEST REWARD: -165.35 - Model saved!
+[15:06:42] 💾 Checkpoint saved: results/dqn_locked/checkpoint_batch_001.pth
+[15:06:42] 📊 Training plots saved: results/dqn_locked/training_progress_batch_001.png
+[15:06:42] 
+🎮 AGENT DEMONSTRATION (Batch 1):
+[15:06:42] 
+🎮 Running Agent Demonstration (Batch 1)
+[15:06:42]    Demo Episode 1 - Starting...
+[15:06:53]    Demo Episode 1: -156.50 reward, 8 steps
+[15:06:53]    Average Demo Performance: -156.50 reward, 8.0 steps
+[15:06:53]    Current Epsilon: 0.8589
+[15:06:53]    Demo Performance: -156.50 reward, 8.0 steps
+[15:06:53] 
+🔄 BATCH 2/10 - Training 10 episodes...
+[15:07:05]    Episode 11: Reward -158.50, Steps 11, Loss 13.7385, Q-val -0.24, ε 0.835
+[15:07:55]    Episode 16: Reward -150.00, Steps 11, Loss 8.8130, Q-val -0.63, ε 0.777

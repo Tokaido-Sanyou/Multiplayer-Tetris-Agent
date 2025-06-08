@@ -1,0 +1,1126 @@
+import gym
+import numpy as np
+from gym import spaces
+import pygame
+import random
+import time
+import logging
+import os
+import sys
+import copy
+from collections import deque
+from typing import Dict, List, Tuple, Any, Optional, Union
+
+# Handle both direct execution and module import
+try:
+    from .game.game import Game
+    from .game.piece import Piece
+    from .game.utils import create_grid, check_lost, count_holes
+    from .game.piece_utils import valid_space, convert_shape_format
+    from .game.constants import shapes, s_width, s_height  # Removed shape_colors
+    from .game.player import Player
+    from .game.block_pool import BlockPool
+except ImportError:
+    # Direct execution - imports without relative paths
+    from game.game import Game
+    from game.piece import Piece
+    from game.utils import create_grid, check_lost, count_holes
+    from game.piece_utils import valid_space, convert_shape_format
+    from game.constants import shapes, s_width, s_height  # Removed shape_colors
+    from game.player import Player
+    from game.block_pool import BlockPool
+
+# Configure debug logging to file
+logging.basicConfig(level=logging.DEBUG,
+                    filename='tetris_debug.log',
+                    filemode='w',
+                    format='%(asctime)s %(levelname)s:%(message)s')
+logger = logging.getLogger(__name__)
+
+class TetrisTrajectory:
+    """Manages trajectory data for tree-based learning"""
+    
+    def __init__(self, trajectory_id: str):
+        self.trajectory_id = trajectory_id
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.infos = []
+        self.parent_trajectory = None
+        self.child_trajectories = []
+        self.branch_point = -1
+        
+    def add_step(self, state, action, reward, info):
+        """Add a step to the trajectory"""
+        self.states.append(copy.deepcopy(state))
+        self.actions.append(copy.deepcopy(action))
+        self.rewards.append(reward)
+        self.infos.append(copy.deepcopy(info))
+        
+    def branch_from(self, parent_trajectory, branch_point: int):
+        """Create a branch from another trajectory at a specific point"""
+        self.parent_trajectory = parent_trajectory
+        self.branch_point = branch_point
+        parent_trajectory.child_trajectories.append(self)
+        
+        # Copy states up to branch point
+        if branch_point < len(parent_trajectory.states):
+            self.states = copy.deepcopy(parent_trajectory.states[:branch_point + 1])
+            self.actions = copy.deepcopy(parent_trajectory.actions[:branch_point])
+            self.rewards = copy.deepcopy(parent_trajectory.rewards[:branch_point])
+            self.infos = copy.deepcopy(parent_trajectory.infos[:branch_point])
+
+class BoardState:
+    """Represents a complete board state that can be saved and restored"""
+    
+    def __init__(self, player_state: Dict, game_state: Dict):
+        self.player_state = copy.deepcopy(player_state)
+        self.game_state = copy.deepcopy(game_state)
+        self.timestamp = time.time()
+        
+    @classmethod
+    def from_env(cls, env):
+        """Create a board state from current environment"""
+        player_states = []
+        for player in env.players:
+            player_state = {
+                'locked_positions': copy.deepcopy(player.locked_positions),
+                'current_piece': copy.deepcopy(player.current_piece),
+                'next_pieces': copy.deepcopy(player.next_pieces),
+                'hold_piece': copy.deepcopy(player.hold_piece),
+                'can_hold': player.can_hold,
+                'score': player.score,
+                'current_block_index': player.current_block_index,
+                'change_piece': player.change_piece
+            }
+            player_states.append(player_state)
+        
+        game_state = {
+            'level': env.game.level,
+            'fall_speed': env.game.fall_speed,
+            'episode_steps': env.episode_steps,
+            'num_agents': env.num_agents
+        }
+        
+        return cls(player_states, game_state)
+    
+    def restore_to_env(self, env):
+        """Restore this board state to an environment"""
+        # Restore player states
+        for i, player_state in enumerate(self.player_state):
+            if i < len(env.players):
+                player = env.players[i]
+                player.locked_positions = copy.deepcopy(player_state['locked_positions'])
+                player.current_piece = copy.deepcopy(player_state['current_piece'])
+                player.next_pieces = copy.deepcopy(player_state['next_pieces'])
+                player.hold_piece = copy.deepcopy(player_state['hold_piece'])
+                player.can_hold = player_state['can_hold']
+                player.score = player_state['score']
+                player.current_block_index = player_state['current_block_index']
+                player.change_piece = player_state['change_piece']
+        
+        # Restore game state
+        env.game.level = self.game_state['level']
+        env.game.fall_speed = self.game_state['fall_speed']
+        env.episode_steps = self.game_state['episode_steps']
+        
+        # Ensure correct number of agents
+        if 'num_agents' in self.game_state:
+            env.num_agents = self.game_state['num_agents']
+
+class TetrisEnv(gym.Env):
+    """
+    Enhanced Custom Tetris Environment for Multi-Agent ML Training
+    Supports both single and multi-agent modes with advanced trajectory tracking
+    Uses binary tuple structures for observations and actions
+    """
+    metadata = {'render.modes': ['human']}
+
+    def __init__(self, num_agents: int = 1, headless: bool = False, 
+                 step_mode: str = 'action', action_mode: str = 'direct', 
+                 enable_trajectory_tracking: bool = True):
+        super(TetrisEnv, self).__init__()
+        
+        # Configuration
+        self.num_agents = num_agents
+        self.headless = headless
+        self.step_mode = step_mode  # 'action' or 'block_placed'
+        self.action_mode = action_mode  # 'direct' or 'locked_position'
+        self.enable_trajectory_tracking = enable_trajectory_tracking
+        
+        # Initialize pygame
+        if not self.headless:
+            pygame.init()
+        
+        # Action space depends on action mode
+        if self.action_mode == 'direct':
+            # Direct actions: 8 discrete actions (scalar)
+            single_action_space = spaces.Discrete(8)
+        elif self.action_mode == 'locked_position':
+            # Locked position selection: choose from valid positions for current piece
+            # 800 possible actions: 10 (x) × 20 (y) × 4 (rotation) = 800
+            single_action_space = spaces.Discrete(800)
+        else:
+            raise ValueError(f"Invalid action_mode: {self.action_mode}")
+            
+        if self.num_agents == 1:
+            self.action_space = single_action_space
+        else:
+            self.action_space = spaces.Dict({
+                f'agent_{i}': single_action_space for i in range(self.num_agents)
+            })
+        
+        # Observation space - redesigned binary array structures
+        # Flattened binary representation: board (200) + current piece (3) + next piece (3)
+        # Total: 206 binary values (redesigned from 425)
+        obs_size = 200 + 3 + 3  # Total: 206 binary values
+        single_obs_space = spaces.Box(low=0, high=1, shape=(obs_size,), dtype=np.float32)
+        
+        if self.num_agents == 1:
+            self.observation_space = single_obs_space
+        else:
+            self.observation_space = spaces.Dict({
+                f'agent_{i}': single_obs_space for i in range(self.num_agents)
+            })
+        
+        # Initialize rendering surface
+        if not self.headless:
+            self.surface = pygame.display.set_mode((s_width, s_height))
+            pygame.display.set_caption("Tetris ML Training")
+        else:
+            self.surface = pygame.Surface((s_width, s_height))
+            
+        # Game components
+        self.game = None
+        self.players = []
+        self.clock = pygame.time.Clock()
+        
+        # Training components
+        self.episode_steps = 0
+        # Removed max_steps safety limit as per redesign requirements
+        self.gravity_interval = 5
+        
+        # Trajectory tracking
+        self.trajectories = {}
+        self.current_trajectory_id = None
+        
+        # Store previous features for delta reward calculation
+        self.prev_features = {}
+        
+        # Meta-learning variables for RL2, DREAM, etc.
+        self.meta_episode_history = []
+        self.episode_buffer = deque(maxlen=100)  # For meta-learning
+        self.task_context = {}
+        self.adaptation_buffer = deque(maxlen=50)  # For quick adaptation
+        
+        # DQN-specific variables
+        self.experience_buffer = deque(maxlen=100000)
+        self.priority_weights = deque(maxlen=100000)
+        
+        # Dream-specific variables
+        self.dream_states = []
+        self.world_model_data = deque(maxlen=50000)
+
+    def switch_mode(self, num_agents: int = None, step_mode: str = None):
+        """Switch between single/multi-agent modes and step modes dynamically"""
+        if num_agents is not None:
+            self.num_agents = num_agents
+            
+            # Update action and observation spaces
+            single_action_space = spaces.Tuple([spaces.Discrete(2) for _ in range(8)])
+            obs_size = 425  # Binary observation size
+            single_obs_space = spaces.Tuple([spaces.Discrete(2) for _ in range(obs_size)])
+            
+            if self.num_agents == 1:
+                self.action_space = single_action_space
+                self.observation_space = single_obs_space
+            else:
+                self.action_space = spaces.Dict({f'agent_{i}': single_action_space for i in range(self.num_agents)})
+                self.observation_space = spaces.Dict({f'agent_{i}': single_obs_space for i in range(self.num_agents)})
+        
+        if step_mode is not None:
+            self.step_mode = step_mode
+
+    def save_board_state(self, state_id: str):
+        """Save current board state for later restoration"""
+        self.saved_states[state_id] = BoardState.from_env(self)
+
+    def restore_board_state(self, state_id: str):
+        """Restore a previously saved board state"""
+        if state_id in self.saved_states:
+            self.saved_states[state_id].restore_to_env(self)
+        else:
+            raise ValueError(f"No saved state with id '{state_id}'")
+
+    def start_trajectory(self, trajectory_id: str, parent_id: str = None, branch_point: int = -1):
+        """Start a new trajectory for tree-based learning"""
+        trajectory = TetrisTrajectory(trajectory_id)
+        
+        if parent_id and parent_id in self.trajectories:
+            trajectory.branch_from(self.trajectories[parent_id], branch_point)
+        
+        self.trajectories[trajectory_id] = trajectory
+        self.current_trajectory_id = trajectory_id
+
+    def get_trajectory(self, trajectory_id: str) -> Optional[TetrisTrajectory]:
+        """Get trajectory by ID"""
+        return self.trajectories.get(trajectory_id)
+
+    def _get_observation(self):
+        """Get current observation - handles both single and multi-agent"""
+        if self.num_agents == 1:
+            return self._get_single_agent_observation(0)
+        else:
+            observations = {}
+            for i in range(self.num_agents):
+                observations[f'agent_{i}'] = self._get_single_agent_observation(i)
+            return observations
+
+    def _get_single_agent_observation(self, agent_idx: int):
+        """Get observation for redesigned agent: 200 board bits + 3 current piece + 3 next piece = 206 total"""
+        if agent_idx >= len(self.players):
+            # Return empty observation as numpy array
+            return np.zeros(206, dtype=np.float32)
+        
+        player = self.players[agent_idx]
+        observation_bits = []
+        
+        # 1. Board state (20x10 = 200 bits) - only occupancy, no colors
+        grid = create_grid(player.locked_positions)
+        
+        # Add current piece to grid if it exists
+        if player.current_piece:
+            piece_shape = player.current_piece.shape[player.current_piece.rotation]
+            for i, row in enumerate(piece_shape):
+                for j, cell in enumerate(row):
+                    if cell == '0':  # Piece cell
+                        piece_y = player.current_piece.y + i
+                        piece_x = player.current_piece.x + j
+                        if 0 <= piece_y < 20 and 0 <= piece_x < 10:
+                            grid[piece_y][piece_x] = (255, 255, 255)  # Mark as occupied
+        
+        for row in range(20):
+            for col in range(10):
+                # 1 if occupied, 0 if empty (ignoring color)
+                observation_bits.append(1 if grid[row][col] != (0, 0, 0) else 0)
+        
+        # 2. Current piece ID (3 bits for 7 piece types)
+        current_piece_id = 0
+        if player.current_piece:
+            if player.current_piece.shape in shapes:
+                current_piece_id = shapes.index(player.current_piece.shape)
+        
+        # Convert to 3 bits (can represent 0-7)
+        current_piece_bits = [(current_piece_id >> i) & 1 for i in range(3)]
+        observation_bits.extend(current_piece_bits)
+        
+        # 3. Next piece ID (3 bits for 7 piece types)
+        next_piece_id = 0
+        if player.next_pieces and len(player.next_pieces) > 0:
+            next_shape = player.next_pieces[0].shape
+            if next_shape in shapes:
+                next_piece_id = shapes.index(next_shape)
+        
+        # Convert to 3 bits (can represent 0-7)
+        next_piece_bits = [(next_piece_id >> i) & 1 for i in range(3)]
+        observation_bits.extend(next_piece_bits)
+        
+        # Verify total size is 206
+        assert len(observation_bits) == 206, f"Expected 206 bits, got {len(observation_bits)}"
+        
+        return np.array(observation_bits, dtype=np.float32)
+
+    def _get_reward(self, agent_idx: int, lines_cleared: int, game_over: bool):
+        """Enhanced reward function with updated line rewards and removed max height penalty and wells"""
+        player = self.players[agent_idx]
+        
+        # Updated line clear rewards: 1:3, 2:5, 3:8, 4:12
+        line_rewards = {0: 0, 1: 3, 2: 5, 3: 8, 4: 12}
+        reward = line_rewards.get(lines_cleared, 0) * (self.game.level + 1)
+        
+        # Game over penalty
+        if game_over:
+            return reward - 100
+        
+        # Calculate board features (color-independent)
+        grid = create_grid(player.locked_positions)
+        col_heights = []
+        for c in range(10):
+            height = 0
+            for r in range(20):
+                if grid[r][c] != (0, 0, 0):  # Any non-empty cell
+                    height = 20 - r
+                    break
+            col_heights.append(height)
+        
+        # Calculate features (removed max_height and wells)
+        aggregate_height = sum(col_heights)
+        holes = self._count_holes(grid)
+        bumpiness = sum(abs(col_heights[i] - col_heights[i + 1]) for i in range(9))
+        
+        curr_features = {
+            "lines": lines_cleared,
+            "aggregate_height": aggregate_height,
+            "holes": holes,
+            "bumpiness": bumpiness
+        }
+        
+        # Delta-based reward shaping (removed max_height and wells components)
+        prev = self.prev_features.get(agent_idx)
+        if prev:
+            # Reward improvements
+            reward += 10 * (prev["lines"])  # Lines cleared
+            reward += -0.5 * (curr_features["aggregate_height"] - prev["aggregate_height"])
+            reward += -0.5 * (curr_features["holes"] - prev["holes"])
+            reward += -0.5 * (curr_features["bumpiness"] - prev["bumpiness"])
+        
+        # Store current features for next step
+        self.prev_features[agent_idx] = curr_features
+        
+        return reward
+    
+    def _count_holes(self, grid):
+        """Count holes in the grid (color-independent)"""
+        holes = 0
+        for col in range(10):
+            found_block = False
+            for row in range(20):
+                if grid[row][col] != (0, 0, 0):  # Any non-empty cell
+                    found_block = True
+                elif found_block and grid[row][col] == (0, 0, 0):
+                    holes += 1
+        return holes
+
+    # === DQN Support Functions ===
+    def add_experience(self, state, action, reward, next_state, done, priority=None):
+        """Add experience to replay buffer for DQN training"""
+        experience = {
+            'state': copy.deepcopy(state),
+            'action': copy.deepcopy(action),
+            'reward': reward,
+            'next_state': copy.deepcopy(next_state),
+            'done': done,
+            'timestamp': time.time()
+        }
+        self.experience_buffer.append(experience)
+        
+        # Add priority for prioritized experience replay
+        if priority is not None:
+            self.priority_weights.append(priority)
+        else:
+            self.priority_weights.append(1.0)
+    
+    def sample_experience_batch(self, batch_size: int, prioritized: bool = False):
+        """Sample a batch of experiences for training"""
+        if len(self.experience_buffer) < batch_size:
+            return None
+        
+        if prioritized and len(self.priority_weights) >= len(self.experience_buffer):
+            # Prioritized sampling
+            weights = np.array(list(self.priority_weights)[-len(self.experience_buffer):])
+            probs = weights / np.sum(weights)
+            indices = np.random.choice(len(self.experience_buffer), batch_size, p=probs)
+        else:
+            # Uniform sampling
+            indices = np.random.choice(len(self.experience_buffer), batch_size, replace=False)
+        
+        batch = [self.experience_buffer[i] for i in indices]
+        return batch, indices if prioritized else batch
+    
+    def update_priorities(self, indices: List[int], priorities: List[float]):
+        """Update priorities for prioritized experience replay"""
+        for idx, priority in zip(indices, priorities):
+            if idx < len(self.priority_weights):
+                self.priority_weights[idx] = priority
+
+    # === DREAM Support Functions ===
+    def add_world_model_data(self, state, action, next_state, reward, done):
+        """Add data for world model training in DREAM algorithm"""
+        model_data = {
+            'state': copy.deepcopy(state),
+            'action': copy.deepcopy(action),
+            'next_state': copy.deepcopy(next_state),
+            'reward': reward,
+            'done': done,
+            'timestamp': time.time()
+        }
+        self.world_model_data.append(model_data)
+    
+    def sample_world_model_batch(self, batch_size: int):
+        """Sample batch for world model training"""
+        if len(self.world_model_data) < batch_size:
+            return None
+        
+        indices = np.random.choice(len(self.world_model_data), batch_size, replace=False)
+        return [self.world_model_data[i] for i in indices]
+    
+    def generate_dream_experience(self, initial_state, num_steps: int = 10):
+        """Generate imagined experience using world model (placeholder for DREAM)"""
+        # This would interface with your trained world model
+        dream_trajectory = []
+        current_state = copy.deepcopy(initial_state)
+        
+        for step in range(num_steps):
+            # This is a placeholder - you would use your actual world model here
+            random_action = tuple([random.randint(0, 1) for _ in range(8)])
+            
+            # Placeholder next state (in practice, use world model prediction)
+            next_state = copy.deepcopy(current_state)
+            reward = np.random.normal(0, 1)  # Placeholder reward
+            done = False
+            
+            dream_trajectory.append({
+                'state': current_state,
+                'action': random_action,
+                'reward': reward,
+                'next_state': next_state,
+                'done': done
+            })
+            
+            current_state = next_state
+            if done:
+                break
+        
+        self.dream_states.extend(dream_trajectory)
+        return dream_trajectory
+
+    # === RL2 and Meta-Learning Support Functions ===
+    def add_episode_to_meta_history(self, episode_data: Dict):
+        """Add completed episode to meta-learning history"""
+        episode_summary = {
+            'total_reward': sum(episode_data.get('rewards', [])),
+            'episode_length': len(episode_data.get('rewards', [])),
+            'final_score': episode_data.get('final_score', 0),
+            'lines_cleared': episode_data.get('total_lines_cleared', 0),
+            'task_context': copy.deepcopy(self.task_context),
+            'timestamp': time.time()
+        }
+        self.meta_episode_history.append(episode_summary)
+    
+    def get_meta_context(self, num_episodes: int = 10):
+        """Get meta-learning context from recent episodes"""
+        if len(self.meta_episode_history) < num_episodes:
+            num_episodes = len(self.meta_episode_history)
+        
+        recent_episodes = self.meta_episode_history[-num_episodes:]
+        
+        # Create context vector
+        context = {
+            'avg_reward': np.mean([ep['total_reward'] for ep in recent_episodes]),
+            'avg_length': np.mean([ep['episode_length'] for ep in recent_episodes]),
+            'avg_score': np.mean([ep['final_score'] for ep in recent_episodes]),
+            'avg_lines': np.mean([ep['lines_cleared'] for ep in recent_episodes]),
+            'episode_count': len(recent_episodes)
+        }
+        
+        return context
+    
+    def set_task_context(self, context: Dict):
+        """Set task context for meta-learning (e.g., difficulty, game variant)"""
+        self.task_context = copy.deepcopy(context)
+    
+    def add_adaptation_data(self, state, action, reward, adaptation_signal):
+        """Add data for quick adaptation in meta-learning"""
+        adaptation_data = {
+            'state': copy.deepcopy(state),
+            'action': copy.deepcopy(action),
+            'reward': reward,
+            'adaptation_signal': adaptation_signal,
+            'timestamp': time.time()
+        }
+        self.adaptation_buffer.append(adaptation_data)
+    
+    def get_adaptation_batch(self, batch_size: int = None):
+        """Get recent adaptation data for quick learning"""
+        if batch_size is None:
+            return list(self.adaptation_buffer)
+        
+        if len(self.adaptation_buffer) < batch_size:
+            return list(self.adaptation_buffer)
+        
+        return list(self.adaptation_buffer)[-batch_size:]
+
+    # === General Support Functions ===
+    def get_state_features(self, agent_idx: int = 0):
+        """Extract engineered features from current state (color-independent)"""
+        if agent_idx >= len(self.players):
+            return {}
+        
+        player = self.players[agent_idx]
+        grid = create_grid(player.locked_positions)
+        
+        # Calculate various features
+        col_heights = []
+        for c in range(10):
+            height = 0
+            for r in range(20):
+                if grid[r][c] != (0, 0, 0):  # Any non-empty cell
+                    height = 20 - r
+                    break
+            col_heights.append(height)
+        
+        features = {
+            'aggregate_height': sum(col_heights),
+            'max_height': max(col_heights),
+            'min_height': min(col_heights),
+            'holes': self._count_holes(grid),
+            'bumpiness': sum(abs(col_heights[i] - col_heights[i + 1]) for i in range(9)),
+            'height_variance': np.var(col_heights),
+            'filled_cells': sum(1 for row in grid for cell in row if cell != (0, 0, 0)),
+            'empty_cells': sum(1 for row in grid for cell in row if cell == (0, 0, 0)),
+            'current_piece_type': shapes.index(player.current_piece.shape) if player.current_piece and player.current_piece.shape in shapes else -1,
+            'next_piece_type': shapes.index(player.next_pieces[0].shape) if player.next_pieces and len(player.next_pieces) > 0 and player.next_pieces[0].shape in shapes else -1,
+            'can_hold': player.can_hold,
+            'score': player.score,
+            'level': self.game.level
+        }
+        
+        return features
+    
+    def reset_buffers(self):
+        """Reset all learning buffers"""
+        self.experience_buffer.clear()
+        self.priority_weights.clear()
+        self.world_model_data.clear()
+        self.adaptation_buffer.clear()
+        self.dream_states.clear()
+    
+    def get_info_dict(self, agent_idx: int = 0):
+        """Get comprehensive info dictionary for learning algorithms"""
+        base_info = {
+            'episode_steps': self.episode_steps,
+            'step_mode': self.step_mode,
+            'num_agents': self.num_agents
+        }
+        
+        if agent_idx < len(self.players):
+            player = self.players[agent_idx]
+            base_info.update({
+                'score': player.score,
+                'level': self.game.level,
+                'can_hold': player.can_hold,
+                'pieces_placed': getattr(player, 'pieces_placed', 0)
+            })
+            
+            # Add state features
+            base_info.update(self.get_state_features(agent_idx))
+        
+        return base_info
+
+    def step(self, action):
+        """Execute one time step - supports both single and multi-agent with binary tuple actions"""
+        self.episode_steps += 1
+        
+        if self.num_agents == 1:
+            return self._step_single_agent(action)
+        else:
+            return self._step_multi_agent(action)
+    
+    def _step_single_agent(self, action):
+        """Handle single agent step with action (format depends on action_mode)"""
+        player = self.players[0]
+        
+        # Process action based on type and mode
+        if isinstance(action, (tuple, list)):
+            # Convert tuple action to scalar
+            action_processed = self._action_tuple_to_scalar(action)
+        else:
+            # Use scalar action directly
+            action_processed = action
+        
+        piece_placed = False
+        lines_cleared = 0
+        
+        # Store previous state for learning algorithms
+        prev_state = self._get_observation()
+        
+        # Execute action based on step mode
+        if self.step_mode == 'action':
+            # Step by individual action
+            piece_placed, lines_cleared = self._execute_action(player, action_processed)
+            
+            # Apply gravity if needed (only for direct actions)
+            if (self.action_mode == 'direct' and action_processed != 5 and 
+                self.episode_steps % self.gravity_interval == 0):
+                gravity_placed, gravity_lines = self._apply_gravity(player)
+                piece_placed = piece_placed or gravity_placed
+                lines_cleared += gravity_lines
+                
+        elif self.step_mode == 'block_placed':
+            # Step until block is placed
+            piece_placed, lines_cleared = self._execute_until_placement(player, action_processed)
+        
+        # Check game over
+        game_over = check_lost(player.locked_positions)
+        
+        # Get observation and reward
+        observation = self._get_observation()
+        reward = self._get_reward(0, lines_cleared, game_over)
+        
+        # Check if episode is done (only game over, no max steps limit)
+        done = game_over
+        
+        # Add experience for DQN training
+        self.add_experience(prev_state, action, reward, observation, done)
+        
+        # Add world model data for DREAM
+        self.add_world_model_data(prev_state, action, observation, reward, done)
+        
+        # Store trajectory data
+        if self.enable_trajectory_tracking and self.current_trajectory_id:
+            trajectory = self.trajectories[self.current_trajectory_id]
+            trajectory.add_step(observation, action, reward, {
+                'lines_cleared': lines_cleared,
+                'piece_placed': piece_placed,
+                'game_over': game_over
+            })
+        
+        info = self.get_info_dict(0)
+        info.update({
+            'lines_cleared': lines_cleared,
+            'piece_placed': piece_placed,
+            'game_over': game_over
+        })
+        
+        return observation, reward, done, info
+    
+    def _step_multi_agent(self, actions):
+        """Handle multi-agent step with actions (format depends on action_mode)"""
+        observations = {}
+        rewards = {}
+        dones = {}
+        infos = {}
+        
+        # Store previous states for learning algorithms
+        prev_states = {}
+        for i in range(self.num_agents):
+            if i < len(self.players):
+                prev_states[f'agent_{i}'] = self._get_single_agent_observation(i)
+        
+        # Execute actions for all agents
+        for i in range(self.num_agents):
+            if i < len(self.players):
+                agent_key = f'agent_{i}'
+                
+                # Get default action based on action mode
+                if self.action_mode == 'direct':
+                    default_action = tuple([0] * 8)
+                elif self.action_mode == 'locked_position':
+                    default_action = 0  # Default position index
+                else:
+                    raise ValueError(f"Unknown action_mode: {self.action_mode}")
+                
+                action = actions.get(agent_key, default_action)
+                
+                # Convert action format based on action mode
+                if isinstance(action, (tuple, list)):
+                    action_processed = self._action_tuple_to_scalar(action)
+                else:
+                    action_processed = action
+                
+                player = self.players[i]
+                piece_placed, lines_cleared = self._execute_action(player, action_processed)
+                
+                # Apply gravity (only for direct actions)
+                if (self.action_mode == 'direct' and action_processed != 5 and 
+                    self.episode_steps % self.gravity_interval == 0):
+                    gravity_placed, gravity_lines = self._apply_gravity(player)
+                    piece_placed = piece_placed or gravity_placed
+                    lines_cleared += gravity_lines
+                
+                # Check game over for this agent
+                game_over = check_lost(player.locked_positions)
+                
+                # Get observation and reward for this agent
+                observations[agent_key] = self._get_single_agent_observation(i)
+                rewards[agent_key] = self._get_reward(i, lines_cleared, game_over)
+                dones[agent_key] = game_over
+                
+                # Add experience for DQN training
+                if agent_key in prev_states:
+                    self.add_experience(
+                        prev_states[agent_key], 
+                        action, 
+                        rewards[agent_key], 
+                        observations[agent_key], 
+                        dones[agent_key]
+                    )
+                
+                infos[agent_key] = self.get_info_dict(i)
+                infos[agent_key].update({
+                    'lines_cleared': lines_cleared,
+                    'piece_placed': piece_placed,
+                    'game_over': game_over
+                })
+        
+        # Global done condition (only game over, no max steps limit)
+        done = any(dones.values())
+        
+        return observations, rewards, done, infos
+    
+    def _execute_action(self, player, action):
+        """Execute a single action for a player"""
+        piece_placed = False
+        lines_cleared = 0
+        
+        try:
+            if self.action_mode == 'direct':
+                piece_placed, lines_cleared = self._execute_direct_action(player, action)
+            elif self.action_mode == 'locked_position':
+                piece_placed, lines_cleared = self._execute_locked_position_action(player, action)
+                
+        except Exception as e:
+            logger.error(f"Error executing action {action}: {e}")
+            # Continue without action
+            
+        return piece_placed, lines_cleared
+    
+    def _execute_direct_action(self, player, action_idx):
+        """Execute direct action (original implementation)"""
+        piece_placed = False
+        lines_cleared = 0
+        
+        try:
+            # Import action handler
+            try:
+                from .game.action_handler import ActionHandler
+            except ImportError:
+                from game.action_handler import ActionHandler
+            
+            action_handler = ActionHandler(player)
+            
+            # Execute action
+            if action_idx == 0:  # Move left
+                action_handler.move_left()
+            elif action_idx == 1:  # Move right
+                action_handler.move_right()
+            elif action_idx == 2:  # Move down (soft drop)
+                result = action_handler.move_down()
+                if not result:  # Piece couldn't move down, it's placed
+                    piece_placed = True
+                    lines_cleared = player.update(self.game.fall_speed, self.game.level)
+            elif action_idx == 3:  # Rotate clockwise
+                action_handler.rotate_cw()
+            elif action_idx == 4:  # Rotate counter-clockwise
+                action_handler.rotate_ccw()
+            elif action_idx == 5:  # Hard drop
+                action_handler.hard_drop()
+                piece_placed = True
+                lines_cleared = player.update(self.game.fall_speed, self.game.level)
+            elif action_idx == 6:  # Hold piece
+                action_handler.hold_piece()
+            # action_idx == 7 is no-op
+                
+        except Exception as e:
+            logger.error(f"Error executing direct action {action_idx}: {e}")
+            
+        return piece_placed, lines_cleared
+    
+    def _execute_locked_position_action(self, player, action_idx):
+        """Execute locked position selection action with rotation (800 action space)"""
+        piece_placed = False
+        lines_cleared = 0
+        
+        try:
+            # Convert action index to (x, y, rotation) coordinates
+            # Formula: action_idx = y*10*4 + x*4 + rotation
+            # Reverse: y = action_idx // 40, x = (action_idx % 40) // 4, rotation = action_idx % 4
+            target_y = action_idx // 40
+            target_x = (action_idx % 40) // 4
+            target_rotation = action_idx % 4
+            
+            if not (0 <= action_idx < 800):
+                logger.warning(f"Invalid action index {action_idx} (must be 0-799)")
+                return False, 0
+                
+            if not (0 <= target_x < 10 and 0 <= target_y < 20):
+                logger.warning(f"Invalid coordinates from action {action_idx} -> ({target_x}, {target_y}, rot={target_rotation})")
+                return False, 0
+            
+            # Create placement with exact rotation specified
+            placement = {
+                'x': target_x,
+                'y': target_y,
+                'rotation': target_rotation,
+                'distance': 0.0  # Exact placement
+            }
+            
+            # Execute the placement directly
+            piece_placed, lines_cleared = self._execute_placement(player, placement)
+                
+        except Exception as e:
+            logger.error(f"Error executing locked position action {action_idx}: {e}")
+            
+        return piece_placed, lines_cleared
+    
+    def _find_best_placement(self, player, target_x, target_y):
+        """Find the best placement (rotation, position) for a piece near target coordinates"""
+        current_piece = player.current_piece
+        if not current_piece:
+            return None
+        
+        try:
+            from .game.utils import create_grid, hard_drop
+            from .game.piece_utils import valid_space, convert_shape_format
+        except ImportError:
+            from game.utils import create_grid, hard_drop
+            from game.piece_utils import valid_space, convert_shape_format
+        
+        grid = create_grid(player.locked_positions)
+        best_placement = None
+        min_distance = float('inf')
+        
+        # Try all rotations
+        for rotation in range(4):
+            # Try positions around the target
+            for x_offset in range(-2, 3):  # ±2 columns around target
+                test_x = target_x + x_offset
+                if test_x < 0 or test_x >= 10:
+                    continue
+                
+                # Create test piece
+                test_piece = type(current_piece)(test_x, 0, current_piece.shape)
+                test_piece.rotation = rotation
+                
+                # Hard drop to find final position
+                original_y = test_piece.y
+                hard_drop(test_piece, grid)
+                
+                if valid_space(test_piece, grid):
+                    # Calculate distance to target
+                    final_positions = convert_shape_format(test_piece)
+                    avg_x = sum(pos[0] for pos in final_positions) / len(final_positions)
+                    avg_y = sum(pos[1] for pos in final_positions) / len(final_positions)
+                    
+                    distance = ((avg_x - target_x) ** 2 + (avg_y - target_y) ** 2) ** 0.5
+                    
+                    if distance < min_distance:
+                        min_distance = distance
+                        best_placement = {
+                            'x': test_x,
+                            'y': test_piece.y,
+                            'rotation': rotation,
+                            'distance': distance
+                        }
+                
+                # Restore original position
+                test_piece.y = original_y
+        
+        return best_placement
+    
+    def _execute_placement(self, player, placement):
+        """Execute a specific piece placement"""
+        piece_placed = False
+        lines_cleared = 0
+        
+        try:
+            from .game.action_handler import ActionHandler
+        except ImportError:
+            from game.action_handler import ActionHandler
+        
+        action_handler = ActionHandler(player)
+        current_piece = player.current_piece
+        
+        # Set the piece to the target configuration
+        current_piece.x = placement['x']
+        current_piece.rotation = placement['rotation']
+        
+        # Hard drop to the final position
+        action_handler.hard_drop()
+        piece_placed = True
+        lines_cleared = player.update(self.game.fall_speed, self.game.level)
+        
+        return piece_placed, lines_cleared
+    
+    def get_valid_positions(self, player):
+        """Get list of valid position indices for current piece"""
+        if not player.current_piece:
+            return []
+        
+        try:
+            from .game.utils import create_grid, hard_drop
+            from .game.piece_utils import valid_space, convert_shape_format
+        except ImportError:
+            from game.utils import create_grid, hard_drop
+            from game.piece_utils import valid_space, convert_shape_format
+        
+        grid = create_grid(player.locked_positions)
+        valid_indices = []
+        
+        # Test all possible positions
+        for y in range(20):
+            for x in range(10):
+                position_idx = y * 10 + x
+                
+                # Quick check if any rotation can place piece near this position
+                placement = self._find_best_placement(player, x, y)
+                if placement is not None and placement['distance'] < 3.0:  # Within 3 units
+                    valid_indices.append(position_idx)
+        
+        return valid_indices
+
+    def _apply_gravity(self, player):
+        """Apply gravity to a player's current piece"""
+        piece_placed = False
+        lines_cleared = 0
+        
+        try:
+            from .game.action_handler import ActionHandler
+        except ImportError:
+            from game.action_handler import ActionHandler
+        
+        action_handler = ActionHandler(player)
+        result = action_handler.move_down()
+        if not result:  # Piece couldn't move down, it's placed
+            piece_placed = True
+            lines_cleared = player.update(self.game.fall_speed, self.game.level)
+        else:
+            piece_placed = False
+            lines_cleared = 0
+        
+        return piece_placed, lines_cleared
+
+    def _execute_until_placement(self, player, action_idx):
+        """Execute actions until a piece is placed"""
+        total_lines_cleared = 0
+        
+        # Execute the initial action
+        piece_placed, lines_cleared = self._execute_action(player, action_idx)
+        total_lines_cleared += lines_cleared
+        
+        # Continue applying gravity until piece is placed
+        max_iterations = 50  # Safety limit
+        iterations = 0
+        
+        while not piece_placed and iterations < max_iterations:
+            piece_placed, lines_cleared = self._apply_gravity(player)
+            total_lines_cleared += lines_cleared
+            iterations += 1
+            
+            # Small delay to prevent infinite loops
+            if not self.headless:
+                pygame.time.wait(10)
+        
+        return piece_placed, total_lines_cleared
+
+    def reset(self):
+        """Reset the environment for a new episode"""
+        # Initialize saved states
+        self.saved_states = {}
+        
+        # Initialize the game
+        self.game = Game(self.surface)
+        self.players = []
+        
+        # Create shared block pool for multi-agent to ensure same block sequence
+        try:
+            from .game.block_pool import BlockPool
+        except ImportError:
+            from game.block_pool import BlockPool
+        
+        shared_block_pool = BlockPool()
+        
+        # Create players with shared block pool
+        for i in range(self.num_agents):
+            player = Player(shared_block_pool)
+            self.players.append(player)
+        
+        # Reset training variables
+        self.episode_steps = 0
+        self.prev_features = {}
+        
+        # Reset trajectory tracking
+        if self.enable_trajectory_tracking:
+            self.trajectories.clear()
+            self.current_trajectory_id = None
+        
+        # Reset episode buffer data for meta-learning
+        self.episode_buffer.clear()
+        
+        # Don't reset experience buffer and world model data (persistent across episodes)
+        # self.experience_buffer.clear()  # Keep for experience replay
+        # self.world_model_data.clear()   # Keep for world model training
+        
+        return self._get_observation()
+
+    def render(self, mode='human'):
+        """Render the environment"""
+        if self.headless:
+            return
+        
+        try:
+            # Import the standalone draw_window function and constants
+            try:
+                from .game.utils import draw_window, create_grid
+                from .game.constants import s_width
+            except ImportError:
+                from game.utils import draw_window, create_grid
+                from game.constants import s_width
+            
+            # For single agent, create simple visualization
+            if self.num_agents == 1:
+                player = self.players[0]
+                
+                # Create grid from locked positions
+                grid = create_grid(player.locked_positions)
+                
+                # Draw the game using the standalone function
+                # For single player, we duplicate the grid for the draw_window function
+                draw_window(
+                    surface=self.surface,
+                    grid_1=grid,
+                    grid_2=grid,  # Duplicate for now
+                    current_piece_1=player.current_piece,
+                    current_piece_2=None,  # No second player
+                    score_1=player.score,
+                    score_2=0,
+                    level=self.game.level,
+                    speed=self.game.fall_speed,
+                    add=0
+                )
+            else:
+                # Multi-agent rendering
+                grid_1 = create_grid(self.players[0].locked_positions)
+                grid_2 = create_grid(self.players[1].locked_positions) if len(self.players) > 1 else grid_1
+                
+                draw_window(
+                    surface=self.surface,
+                    grid_1=grid_1,
+                    grid_2=grid_2,
+                    current_piece_1=self.players[0].current_piece,
+                    current_piece_2=self.players[1].current_piece if len(self.players) > 1 else None,
+                    score_1=self.players[0].score,
+                    score_2=self.players[1].score if len(self.players) > 1 else 0,
+                    level=self.game.level,
+                    speed=self.game.fall_speed,
+                    add=int(s_width // 2)  # Offset for second player
+                )
+            
+            # Note: draw_window already calls pygame.display.update()
+            # Don't call clock.tick here as it might interfere with the display
+            
+        except Exception as e:
+            logger.error(f"Error during rendering: {e}")
+            # Fallback to simple rendering
+            self.surface.fill((50, 50, 50))
+            pygame.display.update()
+
+    def close(self):
+        """Close the environment"""
+        if not self.headless:
+            pygame.quit()
+
+    def _action_tuple_to_scalar(self, action_tuple):
+        """Convert binary tuple action to scalar"""
+        # Find the first 1 in the tuple, or return 7 (no-op) if no 1s
+        for i, bit in enumerate(action_tuple):
+            if bit == 1:
+                return i
+        return 7  # No-op if no action selected
+
+    def _action_scalar_to_tuple(self, action_scalar):
+        """Convert scalar action to binary tuple"""
+        action_tuple = [0] * 8
+        if 0 <= action_scalar < 8:
+            action_tuple[action_scalar] = 1
+        return tuple(action_tuple)

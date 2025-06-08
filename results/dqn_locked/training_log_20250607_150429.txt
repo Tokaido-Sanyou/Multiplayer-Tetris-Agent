@@ -1,0 +1,4 @@
+[15:04:29] DQN Locked State Training Started
+[15:04:29] Device: cuda
+[15:04:29] Action space: 1600
+[15:04:29] State space: 585

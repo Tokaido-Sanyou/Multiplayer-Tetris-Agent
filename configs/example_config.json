@@ -1,0 +1,50 @@
+{
+  "config_name": "dqn_default",
+  "model": {
+    "output_size": 8,
+    "activation_type": "identity",
+    "use_dropout": true,
+    "dropout_rate": 0.1
+  },
+  "training": {
+    "learning_rate": 0.0001,
+    "gamma": 0.99,
+    "epsilon_start": 1.0,
+    "epsilon_end": 0.01,
+    "epsilon_decay_steps": 50000,
+    "batch_size": 32,
+    "target_update_freq": 1000,
+    "memory_size": 100000,
+    "min_memory_size": 1000,
+    "max_episodes": 5000,
+    "max_steps_per_episode": 2000,
+    "save_freq": 500,
+    "eval_freq": 100,
+    "prioritized_replay": true,
+    "double_dqn": true,
+    "device": "cuda"
+  },
+  "environment": {
+    "num_agents": 1,
+    "headless": true,
+    "action_mode": "direct",
+    "step_mode": "action",
+    "enable_trajectory_tracking": true
+  },
+  "logging": {
+    "log_level": "INFO",
+    "console_output": true,
+    "file_output": true,
+    "json_output": true,
+    "log_dir": "logs/dqn_default",
+    "tensorboard_logging": false,
+    "video_logging": false
+  },
+  "paths": {
+    "models_dir": "models",
+    "checkpoints_dir": "models/checkpoints/dqn_default",
+    "results_dir": "results/dqn_default",
+    "data_dir": "data/dqn_default",
+    "logs_dir": "logs/dqn_default"
+  }
+}
