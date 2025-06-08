@@ -167,4 +167,17 @@ def train_airl(
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--demos", type=Path, required=True)
-    p.add_argument("--timesteps", type=int, default=_
+    p.add_argument("--timesteps", type=int, default=2_000_000)
+    p.add_argument("--out", type=Path, default=Path("airl_checkpoints"))
+    p.add_argument(
+        "--tb_dir",
+        type=Path,
+        default=None,
+        help="TensorBoard log directory",
+    )
+    return p.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    train_airl(args.demos, args.timesteps, args.out, args.tb_dir)
