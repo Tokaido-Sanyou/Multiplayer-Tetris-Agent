@@ -16,11 +16,11 @@ from pathlib import Path
 import dataclasses
 import numpy as np
 import torch
-from datetime import datetime
 
 from gym.wrappers import FlattenObservation
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.callbacks import CheckpointCallback
 
 from imitation.algorithms.adversarial import airl
 from imitation.data.types import TrajectoryWithRew
@@ -65,56 +65,57 @@ def train_airl(
     out_dir: Path,
     tb_dir: Path | None = None,
 ):
-    # Load and fix expert demos
-    demonstrations = load_demos(demo_path)
+    # 1) Load and fix expert demos
+    demos = load_demos(demo_path)
 
-    # FlattenObservation for the generator AND expert data
+    # 2) FlattenObservation wrapper for expert data
     flat_wrapper = FlattenObservation(make_env(headless=True))
-    # manually flatten each expert trajectory’s obs
-    flattened = []
-    for traj in demonstrations:
+    flattened: list[TrajectoryWithRew] = []
+    for traj in demos:
+        # stack flattened obs per timestep → array of shape (T+1, obs_dim)
         flat_obs = np.stack([flat_wrapper.observation(o) for o in traj.obs], axis=0)
         flattened.append(dataclasses.replace(traj, obs=flat_obs))
-    demonstrations = flattened
+    demos = flattened
 
-    # VecEnv for PPO, with flat vectors
-    venv = DummyVecEnv([lambda: FlattenObservation(make_env(headless=True))])
+    # 3) Build the generator VecEnv with FlattenObservation + reward normalization
+    raw_venv = DummyVecEnv([lambda: FlattenObservation(make_env(headless=True))])
+    venv = VecNormalize(raw_venv, norm_obs=True, norm_reward=True, clip_obs=10.0)
 
-    # TensorBoard setup
+    # 4) TensorBoard directory & logger
     if tb_dir is None:
         tb_dir = out_dir / "tb_logs"
     logger = configure(folder=str(tb_dir), format_strs=["stdout", "tensorboard"])
 
-    # 1) Generator: PPO with extra entropy & more epochs
+    # 5) PPO generator with stability & exploration tweaks
     learner = PPO(
         "MlpPolicy",
         venv,
         batch_size=4096,
         n_steps=2048,
-        learning_rate=1e-4,      # lower than before
-        ent_coef=0.01,           # keep a small entropy bonus
-        vf_coef=0.25,            # downweight the value loss
-        clip_range=0.2,          # policy clipping
-        clip_range_vf=0.2,       # added: value clipping
-        gae_lambda=0.95,         # slightly lower lambda for GAE
-        max_grad_norm=0.5,       # clip total gradient norm
-        n_epochs=15,             # as before, plenty of passes
+        learning_rate=1e-4,
+        ent_coef=0.01,
+        vf_coef=0.25,
+        clip_range=0.2,
+        clip_range_vf=0.2,
+        gae_lambda=0.95,
+        max_grad_norm=0.5,
+        n_epochs=15,
         gamma=0.995,
         verbose=1,
         device="auto",
         tensorboard_log=str(tb_dir),
     )
 
-    # 2) Reward net for the AIRL discriminator
+    # 6) AIRL reward network (discriminator)
     reward_net = BasicShapedRewardNet(
         observation_space=venv.observation_space,
         action_space=venv.action_space,
         normalize_input_layer=RunningNorm,
     )
 
-    # 3) AIRL trainer: fewer, slower discriminator updates
+    # 7) AIRL trainer: slow & regularize discriminator
     airl_trainer = airl.AIRL(
-        demonstrations=demonstrations,
+        demonstrations=demos,
         demo_batch_size=2048,
         venv=venv,
         gen_algo=learner,
@@ -124,33 +125,46 @@ def train_airl(
         init_tensorboard_graph=True,
         custom_logger=logger,
         allow_variable_horizon=True,
-        n_disc_updates_per_round=1,          # only 1 disc update per round :contentReference[oaicite:4]{index=4}
-        disc_opt_kwargs={"lr": 1e-6},        # disc LR ~1e-6, ~3 orders lower :contentReference[oaicite:5]{index=5}
+        n_disc_updates_per_round=1,
+        disc_opt_kwargs={
+            "lr": 1e-6,
+            "weight_decay": 1e-5,
+        },
+        reward_net_kwargs={
+            "grad_norm_clipping": 0.5,
+        },
     )
 
-    # 4) Run the full adversarial loop
-    airl_trainer.train(total_timesteps=timesteps)
-
-    # Save final checkpoints
+    # 8) CheckpointCallback: save PPO generator every 100k steps
     out_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_cb = CheckpointCallback(
+        save_freq=100_000 // learner.n_steps,
+        save_path=str(out_dir),
+        name_prefix="ppo_generator",
+    )
+
+    # 9) Warm up generator under initial reward for 100k steps
+    warmup = 100_000
+    airl_trainer.train_gen(
+        total_timesteps=warmup,
+        callback=ckpt_cb,
+    )
+
+    # 10) Run the full AIRL loop for the remaining timesteps
+    airl_trainer.train(
+        total_timesteps=timesteps - warmup,
+        callback=ckpt_cb,
+    )
+
+    # 11) Final save of both generator and reward-net
     learner.save(out_dir / "ppo_generator_final.zip")
-    torch.save(airl_trainer.reward_net.state_dict(), out_dir / "reward_net_final.pth")
+    torch.save(
+        airl_trainer.reward_net.state_dict(),
+        out_dir / "reward_net_final.pth",
+    )
 
 
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--demos", type=Path, required=True)
-    p.add_argument("--timesteps", type=int, default=2_000_000)
-    p.add_argument("--out", type=Path, default=Path("airl_checkpoints"))
-    p.add_argument(
-        "--tb_dir",
-        type=Path,
-        default=None,
-        help="TensorBoard log directory",
-    )
-    return p.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
-    train_airl(args.demos, args.timesteps, args.out, args.tb_dir)
+    p.add_argument("--timesteps", type=int, default=_
