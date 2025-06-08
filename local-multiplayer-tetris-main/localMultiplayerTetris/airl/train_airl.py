@@ -91,9 +91,14 @@ def train_airl(
         venv,
         batch_size=4096,
         n_steps=2048,
-        learning_rate=3e-4,
-        ent_coef=0.01,         # encourage exploration :contentReference[oaicite:3]{index=3}
-        n_epochs=15,           # more policy-gradient epochs per batch
+        learning_rate=1e-4,      # lower than before
+        ent_coef=0.01,           # keep a small entropy bonus
+        vf_coef=0.25,            # downweight the value loss
+        clip_range=0.2,          # policy clipping
+        clip_range_vf=0.2,       # added: value clipping
+        gae_lambda=0.95,         # slightly lower lambda for GAE
+        max_grad_norm=0.5,       # clip total gradient norm
+        n_epochs=15,             # as before, plenty of passes
         gamma=0.995,
         verbose=1,
         device="auto",
