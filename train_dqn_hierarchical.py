@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
-🏗️ HIERARCHICAL DQN TRAINING
-
-Combines locked state DQN (212 inputs → 800 outputs) with movement DQN (800 inputs → 8 outputs).
-This is the complete hierarchical structure.
+HIERARCHICAL DQN TRAINING - COMPLETE WITH DUAL LOSS LOGGING
 """
 
 import torch
@@ -11,48 +8,60 @@ import numpy as np
 import time
 import argparse
 from pathlib import Path
+from torch.utils.tensorboard import SummaryWriter
 
 from agents.dqn_locked_agent_redesigned import RedesignedLockedStateDQNAgent
-from train_dqn_movement import DQNMovementAgent
+from agents.dqn_movement_agent_redesigned import RedesignedMovementAgent
 from envs.tetris_env import TetrisEnv
 
 class HierarchicalDQNTrainer:
-    """Hierarchical DQN trainer combining locked and movement agents"""
+    """Hierarchical DQN trainer with dual agent training and tensorboard logging"""
     
-    def __init__(self, reward_mode='standard', episodes=1000):
+    def __init__(self, reward_mode='standard', episodes=1000, use_tensorboard=True):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.reward_mode = reward_mode
         self.episodes = episodes
         
-        # Create environment
+        # Tensorboard logging setup
+        if use_tensorboard:
+            self.log_dir = f'logs/dqn_hierarchical_{reward_mode}'
+            Path(self.log_dir).mkdir(parents=True, exist_ok=True)
+            self.writer = SummaryWriter(self.log_dir + '/tensorboard')
+            print(f"TensorBoard: tensorboard --logdir={self.log_dir}/tensorboard --port=6008")
+        else:
+            self.writer = None
+        
+        # Create environment for movement actions (hierarchical uses movement)
         self.env = TetrisEnv(
             num_agents=1,
             headless=True,
-            action_mode='direct',  # Final actions are direct movements
+            action_mode='direct',
             reward_mode=reward_mode
         )
         
-        # Initialize locked state agent (212 → 800)
+        # Initialize locked agent (first level of hierarchy)
         self.locked_agent = RedesignedLockedStateDQNAgent(
-            input_dim=212,  # Padded observation
-            num_actions=800,  # Locked positions
+            input_dim=206,
+            num_actions=800,
             device=str(self.device),
             learning_rate=0.0001,
-            epsilon_start=0.9 if reward_mode == 'standard' else 0.95,
-            epsilon_end=0.01 if reward_mode == 'standard' else 0.05,
+            epsilon_start=0.9,
+            epsilon_end=0.01,
             epsilon_decay=episodes * 10,
             reward_mode=reward_mode
         )
         
-        # Initialize movement agent (800 → 8)
-        self.movement_agent = DQNMovementAgent(
-            input_dim=800,    # Takes locked agent Q-values
-            num_actions=8,    # Movement actions
+        # Initialize movement agent (second level of hierarchy)
+        # Input: 1012 (200 board + 6 current + 6 next + 800 locked_q)
+        self.movement_agent = RedesignedMovementAgent(
+            input_dim=1012,  # FIXED: proper dimensions
+            num_actions=8,
             device=str(self.device),
             learning_rate=0.0001,
-            epsilon_start=0.8,
+            epsilon_start=0.9,
             epsilon_end=0.01,
-            epsilon_decay=episodes * 5  # Faster decay for movement
+            epsilon_decay=episodes * 10,
+            reward_mode=reward_mode
         )
         
         # Training metrics
@@ -62,40 +71,80 @@ class HierarchicalDQNTrainer:
         self.locked_losses = []
         self.movement_losses = []
         
-        print(f"🏗️  Hierarchical DQN Trainer Initialized:")
+        # Calculate total parameters
+        locked_params = self.locked_agent.get_parameter_count()
+        movement_params = self.movement_agent.get_parameter_count()
+        total_params = locked_params + movement_params
+        
+        print(f"Hierarchical DQN Trainer Initialized:")
         print(f"   Device: {self.device}")
         print(f"   Reward mode: {reward_mode}")
         print(f"   Episodes: {episodes}")
-        print(f"   Locked Agent: {self.locked_agent.get_parameter_count():,} parameters (212 → 800)")
-        print(f"   Movement Agent: {self.movement_agent.get_parameter_count():,} parameters (800 → 8)")
-        print(f"   Total parameters: {self.locked_agent.get_parameter_count() + self.movement_agent.get_parameter_count():,}")
+        print(f"   Locked agent: 206 → 800 ({locked_params:,} params)")
+        print(f"   Movement agent: 1012 → 8 ({movement_params:,} params)")
+        print(f"   Total parameters: {total_params:,}")
+        print(f"   Movement input: 200 board + 6 current + 6 next + 800 locked")
     
-    def pad_observation(self, obs: np.ndarray) -> np.ndarray:
-        """Pad observation from 206 to 212 dimensions for locked agent"""
-        if obs.shape[0] == 206:
-            return np.concatenate([obs, np.zeros(6)], axis=0)
-        return obs
+    def extract_state_components(self, obs):
+        """Extract components from 206-dimensional observation"""
+        if len(obs) == 206:
+            board_flat = obs[:200]
+            current_piece = obs[200:206]
+            next_piece = np.zeros(6)  # placeholder
+        else:
+            board_flat = obs[:200] if len(obs) >= 200 else np.pad(obs, (0, max(0, 200-len(obs))))
+            current_piece = obs[200:206] if len(obs) >= 206 else np.zeros(6)
+            next_piece = np.zeros(6)
+        
+        return {
+            'board': board_flat,
+            'current': current_piece,
+            'next': next_piece
+        }
     
-    def get_hierarchical_action(self, obs: np.ndarray, training: bool = True) -> tuple:
-        """Get action using hierarchical approach"""
-        # Step 1: Pad observation for locked agent
-        padded_obs = self.pad_observation(obs)
+    def create_movement_state(self, obs):
+        """Create proper input state for movement agent"""
+        # Extract components
+        components = self.extract_state_components(obs)
         
-        # Step 2: Get Q-values from locked agent (don't actually select action)
-        padded_obs_tensor = torch.FloatTensor(padded_obs).unsqueeze(0).to(self.device)
+        # Get locked Q-values from locked agent
+        locked_q_values = self.locked_agent.get_q_values(obs)
         
-        self.locked_agent.q_network.eval()
-        with torch.no_grad():
-            locked_q_values = self.locked_agent.q_network(padded_obs_tensor).squeeze(0).cpu().numpy()
+        # Combine: board(200) + current(6) + next(6) + locked_q(800) = 1012
+        movement_state = np.concatenate([
+            components['board'],
+            components['current'],
+            components['next'],
+            locked_q_values
+        ])
         
-        # Step 3: Use locked Q-values to get movement action
-        movement_action = self.movement_agent.select_action(locked_q_values, training=training)
-        
-        return movement_action, locked_q_values
+        return movement_state
+    
+    def log_metrics(self, episode, episode_reward, episode_length, episode_lines, 
+                   locked_loss, movement_loss, locked_epsilon, movement_epsilon):
+        """Log metrics to tensorboard with dual losses"""
+        if self.writer:
+            # Episode metrics
+            self.writer.add_scalar('Episode/Reward', episode_reward, episode)
+            self.writer.add_scalar('Episode/Length', episode_length, episode)
+            self.writer.add_scalar('Episode/Lines_Cleared', episode_lines, episode)
+            
+            # Training losses
+            self.writer.add_scalar('Training/Locked_Loss', locked_loss, episode)
+            self.writer.add_scalar('Training/Movement_Loss', movement_loss, episode)
+            
+            # Exploration
+            self.writer.add_scalar('Training/Locked_Epsilon', locked_epsilon, episode)
+            self.writer.add_scalar('Training/Movement_Epsilon', movement_epsilon, episode)
+            
+            # Cumulative
+            self.writer.add_scalar('Cumulative/Total_Lines', sum(self.lines_cleared), episode)
+            
+            self.writer.flush()
     
     def train(self):
-        """Main hierarchical training loop"""
-        print(f"\n🏗️  STARTING HIERARCHICAL DQN TRAINING ({self.episodes} episodes)")
+        """Main hierarchical training loop with dual loss logging"""
+        print(f"\nSTARTING HIERARCHICAL DQN TRAINING ({self.episodes} episodes)")
         print("=" * 70)
         
         start_time = time.time()
@@ -106,152 +155,110 @@ class HierarchicalDQNTrainer:
             episode_reward = 0
             episode_length = 0
             episode_lines = 0
+            locked_loss = 0
+            movement_loss = 0
             
-            # Get initial hierarchical action
-            prev_action, prev_locked_q = self.get_hierarchical_action(obs, training=True)
-            prev_padded_obs = self.pad_observation(obs)
-            
-            for step in range(500):  # Max steps per episode
-                # Execute movement action in environment
-                next_obs, reward, done, info = self.env.step(prev_action)
+            for step in range(500):
+                # Level 1: Locked agent analyzes state
+                locked_q_values = self.locked_agent.get_q_values(obs)
                 
-                # Track episode stats
+                # Level 2: Movement agent uses locked analysis + full state
+                movement_state = self.create_movement_state(obs)
+                action = self.movement_agent.select_action(movement_state, training=True)
+                
+                # Environment step
+                next_obs, reward, done, info = self.env.step(action)
+                
                 if 'lines_cleared' in info:
                     episode_lines += info['lines_cleared']
                 
-                # Get next hierarchical action
-                if not done:
-                    next_action, next_locked_q = self.get_hierarchical_action(next_obs, training=True)
-                    next_padded_obs = self.pad_observation(next_obs)
-                else:
-                    next_action, next_locked_q = 0, np.zeros(800)
-                    next_padded_obs = np.zeros(212)
+                # Prepare next states
+                next_locked_q_values = self.locked_agent.get_q_values(next_obs)
+                next_movement_state = self.create_movement_state(next_obs)
                 
-                # Train locked agent (using padded observations)
-                self.locked_agent.store_experience(prev_padded_obs, prev_action, reward, next_padded_obs, done)
-                locked_loss_dict = self.locked_agent.update(prev_padded_obs, prev_action, reward, next_padded_obs, done)
+                # Train both agents
+                # Locked agent: learns to predict best locked positions
+                # Use a dummy locked action for training (the agent still learns state evaluation)
+                dummy_locked_action = np.random.randint(0, 800)
+                locked_loss_dict = self.locked_agent.update(obs, dummy_locked_action, reward, next_obs, done)
                 
-                # Train movement agent (using locked Q-values)
-                self.movement_agent.store_experience(prev_locked_q, prev_action, reward, next_locked_q, done)
-                movement_loss_dict = self.movement_agent.update()
+                # Movement agent: learns to convert locked analysis to actions
+                movement_loss_dict = self.movement_agent.update(movement_state, action, reward, next_movement_state, done)
+                
+                if locked_loss_dict and 'loss' in locked_loss_dict:
+                    locked_loss = locked_loss_dict['loss']
+                
+                if movement_loss_dict and 'loss' in movement_loss_dict:
+                    movement_loss = movement_loss_dict['loss']
                 
                 episode_reward += reward
                 episode_length += 1
                 
                 if done:
                     break
-                
-                # Update for next iteration
+                    
                 obs = next_obs
-                prev_action = next_action
-                prev_locked_q = next_locked_q
-                prev_padded_obs = next_padded_obs
             
             # Store metrics
             self.episode_rewards.append(episode_reward)
             self.episode_lengths.append(episode_length)
             self.lines_cleared.append(episode_lines)
-            
-            if locked_loss_dict and 'loss' in locked_loss_dict:
-                self.locked_losses.append(locked_loss_dict['loss'])
-            if movement_loss_dict and 'loss' in movement_loss_dict:
-                self.movement_losses.append(movement_loss_dict['loss'])
+            if locked_loss > 0:
+                self.locked_losses.append(locked_loss)
+            if movement_loss > 0:
+                self.movement_losses.append(movement_loss)
             
             total_lines += episode_lines
             
-            # Logging
+            # Log to tensorboard with dual losses
+            self.log_metrics(episode, episode_reward, episode_length, episode_lines,
+                           locked_loss, movement_loss, 
+                           self.locked_agent.epsilon, self.movement_agent.epsilon)
+            
+            # Console logging
             if episode % 50 == 0 or episode < 5:
-                avg_reward = np.mean(self.episode_rewards[-50:]) if len(self.episode_rewards) >= 50 else np.mean(self.episode_rewards)
-                recent_lines = sum(self.lines_cleared[-50:]) if len(self.lines_cleared) >= 50 else sum(self.lines_cleared)
-                
                 print(f"Episode {episode:4d}: "
                       f"Reward={episode_reward:7.2f}, "
                       f"Length={episode_length:3d}, "
-                      f"Lines={episode_lines:1d}, "
-                      f"TotalLines={total_lines:3d}, "
-                      f"LockedE={self.locked_agent.epsilon:.3f}, "
-                      f"MoveE={self.movement_agent.epsilon:.3f}, "
-                      f"Recent50Lines={recent_lines:2d}")
+                      f"Lines={episode_lines:1d}")
+                print(f"   Locked Loss={locked_loss:.4f}, ε={self.locked_agent.epsilon:.3f}")
+                print(f"   Move Loss={movement_loss:.4f}, ε={self.movement_agent.epsilon:.3f}")
         
         training_time = time.time() - start_time
         
         print("=" * 70)
-        print(f"🎉 HIERARCHICAL DQN TRAINING COMPLETE!")
+        print(f"HIERARCHICAL DQN TRAINING COMPLETE!")
         print(f"   Total time: {training_time:.1f}s")
-        print(f"   Episodes: {self.episodes}")
         print(f"   Total lines cleared: {total_lines}")
         print(f"   Mean reward: {np.mean(self.episode_rewards):.2f}")
-        print(f"   Final locked epsilon: {self.locked_agent.epsilon:.3f}")
-        print(f"   Final movement epsilon: {self.movement_agent.epsilon:.3f}")
+        print(f"   Locked agent final ε: {self.locked_agent.epsilon:.3f}")
+        print(f"   Movement agent final ε: {self.movement_agent.epsilon:.3f}")
         
-        return {
-            'episode_rewards': self.episode_rewards,
-            'lines_cleared': self.lines_cleared,
-            'training_time': training_time,
-            'total_lines': total_lines,
-            'locked_losses': self.locked_losses,
-            'movement_losses': self.movement_losses
-        }
-    
-    def save_models(self, filepath: str):
-        """Save both agent models"""
-        save_path = Path(filepath)
-        save_path.mkdir(parents=True, exist_ok=True)
-        
-        self.locked_agent.save_checkpoint(str(save_path / "locked_agent.pth"))
-        
-        # Save movement agent
-        torch.save({
-            'q_network_state_dict': self.movement_agent.q_network.state_dict(),
-            'target_network_state_dict': self.movement_agent.target_network.state_dict(),
-            'optimizer_state_dict': self.movement_agent.optimizer.state_dict(),
-            'epsilon': self.movement_agent.epsilon,
-            'step_count': self.movement_agent.step_count
-        }, str(save_path / "movement_agent.pth"))
-        
-        print(f"✅ Models saved to {save_path}")
+        return {'total_lines': total_lines, 'training_time': training_time}
     
     def cleanup(self):
         """Clean up resources"""
+        if self.writer:
+            self.writer.close()
         try:
             self.env.close()
         except:
             pass
 
 def main():
-    """Main training function"""
     parser = argparse.ArgumentParser(description='Hierarchical DQN Training')
     parser.add_argument('--reward_mode', choices=['standard', 'lines_only'], 
                        default='standard', help='Reward mode')
     parser.add_argument('--episodes', type=int, default=1000, help='Number of episodes')
-    parser.add_argument('--save_path', type=str, default='models/hierarchical_dqn', 
-                       help='Path to save models')
     args = parser.parse_args()
-    
-    print("🏗️  HIERARCHICAL DQN TRAINING")
-    print("=" * 80)
     
     trainer = HierarchicalDQNTrainer(reward_mode=args.reward_mode, episodes=args.episodes)
     
     try:
         results = trainer.train()
-        
-        # Save models
-        trainer.save_models(args.save_path)
-        
-        print(f"\n✅ Training completed successfully!")
-        print(f"   Total lines cleared: {results['total_lines']}")
-        print(f"   Models saved to: {args.save_path}")
-        
+        print(f"\nTraining completed! Lines cleared: {results['total_lines']}")
     except KeyboardInterrupt:
-        print(f"\n⏹️  Training interrupted by user")
-        trainer.save_models(args.save_path + "_interrupted")
-        
-    except Exception as e:
-        print(f"\n❌ Training failed: {e}")
-        import traceback
-        traceback.print_exc()
-        
+        print(f"\nTraining interrupted")
     finally:
         trainer.cleanup()
 

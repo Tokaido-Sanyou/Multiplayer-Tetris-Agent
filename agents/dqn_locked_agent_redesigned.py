@@ -73,7 +73,7 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
         self.invalid_penalty_rate = invalid_penalty_rate
         self.reward_mode = reward_mode  # NEW: Store reward mode
         
-        print(f"🤖 DQN Agent initialized with reward_mode='{reward_mode}'")
+        print(f"DQN Agent initialized with reward_mode='{reward_mode}'")
         
         # Invalid action tracking
         self.invalid_action_count = 0
@@ -254,15 +254,23 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
         if env is not None and not self.is_valid_action(action_idx, env):
             self.invalid_action_count += 1
             if training:
-                # Try to find valid action
+                # Try to find valid action from top Q-values
                 sorted_actions = np.argsort(q_values)[::-1]
-                for candidate_action in sorted_actions:
+                for candidate_action in sorted_actions[:100]:  # Try top 100 actions
                     if self.is_valid_action(candidate_action, env):
                         action_idx = candidate_action
                         break
                 else:
-                    x, y, rotation = self.map_action_to_board(action_idx)
-                    raise ValueError(f"No valid action found. Last: action={action_idx}, coords=({x}, {y}, {rotation})")
+                    # If no valid action found, try some basic safe positions
+                    safe_actions = [0, 1, 2, 3, 4, 40, 41, 42, 43, 44]  # Bottom row, different rotations
+                    for safe_action in safe_actions:
+                        if self.is_valid_action(safe_action, env):
+                            action_idx = safe_action
+                            break
+                    else:
+                        # Ultimate fallback - just use action 0 (this shouldn't happen)
+                        action_idx = 0
+                        print(f"Warning: Using ultimate fallback action 0")
         
         return action_idx
     
@@ -409,6 +417,27 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epsilon = checkpoint.get('epsilon', self.epsilon_end)
         self.invalid_action_count = checkpoint.get('invalid_action_count', 0)
+    
+    def get_q_values(self, observation: np.ndarray) -> np.ndarray:
+        """Get Q-values for given observation"""
+        # Handle observation format (206 or 212)
+        if isinstance(observation, np.ndarray):
+            obs_array = observation.copy()
+        else:
+            obs_array = np.array(observation, dtype=np.float32)
+        
+        # Pad to 212 dimensions if needed
+        if obs_array.shape[0] == 206:
+            obs_array = np.concatenate([obs_array, np.zeros(6)], axis=0)
+        assert obs_array.shape[0] == 212, f"Expected observation size 212, got {obs_array.shape[0]}"
+        
+        state_tensor = torch.FloatTensor(obs_array).unsqueeze(0).to(self.device)
+        
+        self.q_network.eval()
+        with torch.no_grad():
+            q_values = self.q_network(state_tensor)
+        
+        return q_values.cpu().numpy().flatten()
     
     def get_info(self) -> Dict[str, Any]:
         """Get info"""

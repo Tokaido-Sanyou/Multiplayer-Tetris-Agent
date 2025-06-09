@@ -1,9 +1,0 @@
-Debug Session Results - 20250603_161541
-==================================================
-
-iterative_exploration: PASS
-goal_vector_system: PASS
-6phase_training: PASS
-full_pipeline: PASS
-
-Overall: 4/4 systems working
