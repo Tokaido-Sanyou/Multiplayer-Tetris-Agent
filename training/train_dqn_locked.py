@@ -68,11 +68,13 @@ class ComprehensiveDQNTrainer:
         print(f"   Episodes per batch: {episodes_per_batch}")
         print(f"   Batch size: {batch_size}")
         
-        # Initialize environment in locked position mode
+        # Initialize environment in locked position mode with reward mode support
+        self.reward_mode = getattr(self, 'reward_mode', 'standard')  # Default to standard
         self.env = TetrisEnv(
             num_agents=1,
             headless=True,
-            action_mode='locked_position'
+            action_mode='locked_position',
+            reward_mode=self.reward_mode  # Support both 'standard' and 'lines_only'
         )
         
         # Initialize demo environment for visualization

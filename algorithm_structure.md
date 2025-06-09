@@ -39,7 +39,8 @@ movement_actions = {
 - **Pieces Placed**: 25.4 per episode average (excellent performance)
 - **Lines Cleared**: 0.1 per episode (line clearing functional)
 - **Training Loss**: Progressive learning (221 → 246,260)
-- **Epsilon Decay**: Working correctly (1.000 → 0.521)
+- **Epsilon Decay**: Fixed linear decay (0.95 → 0.01 over 50,000 steps, reaches target correctly)
+- **TensorBoard Logging**: Metrics logged under `logs/actor_locked_system` (rewards, pieces, lines, losses, success rate, epsilon)
 - **GPU Support**: CUDA acceleration confirmed
 - **Checkpoints**: Automatic saves every 100 episodes
 
@@ -67,6 +68,11 @@ trainer = RedesignedAgentTrainer(device='cuda', batch_size=32)
 # Experience replay: Working correctly
 # Target network updates: Every 1000 episodes
 ```
++- **Dynamic Reward Scheduling**:
+  - Line clearing: +1 per line cleared (flat)
+  - Piece placement: +1 per piece, decaying to 0 over first half of episodes
+  - Penalties: Δ(height+holes+bumpiness) × (–0.5), ramping from 0→–0.5 over first half of episodes
+  - Game-over: –100
 
 ## File Structure
 

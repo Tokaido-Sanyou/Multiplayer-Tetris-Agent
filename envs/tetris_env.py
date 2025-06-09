@@ -138,7 +138,7 @@ class TetrisEnv(gym.Env):
 
     def __init__(self, num_agents: int = 1, headless: bool = False, 
                  step_mode: str = 'action', action_mode: str = 'direct', 
-                 enable_trajectory_tracking: bool = True):
+                 enable_trajectory_tracking: bool = True, reward_mode: str = 'standard'):
         super(TetrisEnv, self).__init__()
         
         # Configuration
@@ -147,6 +147,7 @@ class TetrisEnv(gym.Env):
         self.step_mode = step_mode  # 'action' or 'block_placed'
         self.action_mode = action_mode  # 'direct' or 'locked_position'
         self.enable_trajectory_tracking = enable_trajectory_tracking
+        self.reward_mode = reward_mode  # 'standard' or 'lines_only'
         
         # Initialize pygame
         if not self.headless:
@@ -331,7 +332,34 @@ class TetrisEnv(gym.Env):
         return np.array(observation_bits, dtype=np.float32)
 
     def _get_reward(self, agent_idx: int, lines_cleared: int, game_over: bool):
-        """Enhanced reward function with updated line rewards and removed max height penalty and wells"""
+        """
+        Enhanced reward function with multiple modes:
+        - 'standard': Complex reward with board features and shaping
+        - 'lines_only': Only rewards for lines cleared, no other signals
+        """
+        if self.reward_mode == 'lines_only':
+            return self._get_lines_only_reward(agent_idx, lines_cleared, game_over)
+        else:
+            return self._get_standard_reward(agent_idx, lines_cleared, game_over)
+    
+    def _get_lines_only_reward(self, agent_idx: int, lines_cleared: int, game_over: bool):
+        """
+        Lines-only reward function for DQN training.
+        Only gives positive rewards for clearing lines, no other signals.
+        """
+        # Line clear rewards: exponentially increasing
+        line_rewards = {0: 0, 1: 1, 2: 3, 3: 5, 4: 8}
+        reward = line_rewards.get(lines_cleared, 0)
+        
+        # Scale by level for progression
+        reward *= (self.game.level + 1)
+        
+        # No penalties or bonuses for anything else
+        # Game over gives no additional penalty - let sparse rewards guide learning
+        return reward
+    
+    def _get_standard_reward(self, agent_idx: int, lines_cleared: int, game_over: bool):
+        """Standard enhanced reward function with board features and shaping"""
         player = self.players[agent_idx]
         
         # Updated line clear rewards: 1:3, 2:5, 3:8, 4:12

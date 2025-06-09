@@ -103,6 +103,9 @@ pip install -r requirements.txt
 
 # Agent-specific parameters
 --actor-trials 8        # Movement steps for actor-locked system
+--epsilon-start 0.95       # Initial exploration rate for locked model
+--epsilon-end 0.01         # Final exploration rate for locked model
+--epsilon-decay-steps 50000 # Steps to decay epsilon for locked model
 --enable-rnd           # Enable Random Network Distillation
 --rnd-reward-scale 0.1 # RND exploration bonus scale
 
@@ -118,6 +121,8 @@ All training scripts provide real-time metrics:
 - **Training losses**
 - **Success rates**
 - **Average performance over last 10 episodes**
+- **Epsilon decay values** (for Actor-Locked model)
+- **TensorBoard logs** available under `logs/actor_locked_system`
 
 ### Checkpoints
 - Automatic saving every 100 episodes
@@ -132,7 +137,11 @@ All training scripts provide real-time metrics:
   - `locked_position`: 800 direct placement actions
   - `direct`: 8 movement actions (left, right, down, rotate, etc.)
 - **Observation**: 206-dimensional state vector (board + piece info)
-- **Rewards**: Piece placement, line clearing, game over penalties
+- **Rewards**:
+  - **Line clearing**: +1 per line cleared (flat, no level scaling)
+  - **Piece placement**: +1 per piece placed, decaying linearly to 0 over the first half of total episodes
+  - **Penalties**: Δ(aggregate height + holes + bumpiness) × (–0.5), ramping from 0→–0.5 over the first half of total episodes
+  - **Game over**: –100
 - **Compatibility**: Works with all agent architectures
 
 ### GPU Support

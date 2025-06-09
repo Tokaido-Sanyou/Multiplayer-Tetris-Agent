@@ -343,7 +343,9 @@ class OptimizedLockedStateDQNAgent(BaseAgent):
     def train_batch(self) -> Dict[str, float]:
         """Train on a batch of experiences"""
         if len(self.memory) < self.batch_size:
-            return {'loss': 0.0, 'q_value': 0.0}
+            # Ensure epsilon continues to decay even when not enough memory for a training batch
+            self.update_epsilon()
+            return {'loss': 0.0, 'q_value': 0.0, 'epsilon': self.epsilon}
         
         # Sample batch
         batch = random.sample(self.memory, self.batch_size)

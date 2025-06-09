@@ -19,12 +19,8 @@ from collections import deque
 from typing import Dict, List, Tuple, Any, Optional
 import copy
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from dqn_locked_agent_redesigned import RedesignedLockedStateDQNAgent
-from base_agent import BaseAgent
+from .dqn_locked_agent_redesigned import RedesignedLockedStateDQNAgent
+from .base_agent import BaseAgent
 
 class MovementActorNetwork(nn.Module):
     """
@@ -150,15 +146,23 @@ class ActorLockedSystem(BaseAgent):
                  device: str = 'cuda',
                  max_movement_steps: int = 20,
                  actor_learning_rate: float = 0.0001,
-                 locked_model_path: Optional[str] = None):
+                 locked_model_path: Optional[str] = None,
+                 epsilon_start: float = 0.95,
+                 epsilon_end: float = 0.01,
+                 epsilon_decay_steps: int = 50000):
         
         super().__init__(action_space_size=800, observation_space_shape=(206,), device=device)
         
         self.max_movement_steps = max_movement_steps  # Max steps to reach target
         self.device = torch.device(device)
         
-        # Initialize Locked Model (selects target positions)
-        self.locked_model = RedesignedLockedStateDQNAgent(device=device)
+        # Initialize Locked Model (selects target positions) with custom epsilon schedule
+        self.locked_model = RedesignedLockedStateDQNAgent(
+            device=device,
+            epsilon_start=epsilon_start,
+            epsilon_end=epsilon_end,
+            epsilon_decay_steps=epsilon_decay_steps
+        )
         if locked_model_path:
             self.locked_model.load_checkpoint(locked_model_path)
             print(f"Loaded locked model from: {locked_model_path}")

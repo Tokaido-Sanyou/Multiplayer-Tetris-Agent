@@ -14,7 +14,7 @@ class WorldModel(nn.Module):
     """Simple world model for tuple observations"""
     
     def __init__(self,
-                 observation_dim: int = 425,
+                 observation_dim: int = 212,
                  action_dim: int = 8,
                  hidden_dim: int = 256,
                  state_dim: int = 128,

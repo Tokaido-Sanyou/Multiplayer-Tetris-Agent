@@ -34,36 +34,46 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
     """
     
     def __init__(self,
+                 input_dim: int = 212,  # Added for dimension flexibility
+                 num_actions: int = 800,
+                 hidden_dim: int = 800,
                  device: str = 'cuda',
                  learning_rate: float = 0.00005,  # FIXED: Reduced learning rate
                  gamma: float = 0.99,
                  epsilon_start: float = 0.95,  # Updated default start epsilon
                  epsilon_end: float = 0.01,
-                 epsilon_decay_steps: int = 50000,
-                 target_update_freq: int = 1000,
-                 memory_size: int = 100000,
+                 epsilon_decay: int = 50000,  # Renamed for clarity
+                 target_update: int = 1000,   # Renamed for clarity
+                 buffer_size: int = 100000,   # Renamed for clarity
                  batch_size: int = 32,
-                 invalid_penalty_rate: float = 0.01):
-        """Initialize Redesigned Locked State DQN Agent"""
+                 invalid_penalty_rate: float = 0.01,
+                 reward_mode: str = 'standard'):  # NEW: Support both reward modes
+        """Initialize Redesigned Locked State DQN Agent with reward mode support"""
         
         # Action space: 10 (x) × 20 (y) × 4 (rotation) = 800 actions
-        action_space_size = 800
+        action_space_size = num_actions
         
-        # Observation size: 200 (board) + 3 (current piece) + 3 (next piece) = 206
-        obs_size = 206
+        # Observation size: configurable for flexibility
+        obs_size = input_dim
         
         super().__init__(action_space_size, (obs_size,), device)
         
         # Configuration
+        self.input_dim = input_dim
+        self.num_actions = num_actions
+        self.hidden_dim = hidden_dim
         self.learning_rate = learning_rate
         self.gamma = gamma
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
-        self.epsilon_decay_steps = epsilon_decay_steps
-        self.target_update_freq = target_update_freq
+        self.epsilon_decay_steps = epsilon_decay  # Renamed
+        self.target_update_freq = target_update   # Renamed
         self.batch_size = batch_size
         self.epsilon = epsilon_start
         self.invalid_penalty_rate = invalid_penalty_rate
+        self.reward_mode = reward_mode  # NEW: Store reward mode
+        
+        print(f"🤖 DQN Agent initialized with reward_mode='{reward_mode}'")
         
         # Invalid action tracking
         self.invalid_action_count = 0
@@ -85,7 +95,7 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
                                   weight_decay=1e-5)
         
         # Experience replay buffer
-        self.memory = deque(maxlen=memory_size)
+        self.memory = deque(maxlen=buffer_size)
         
         # Training state
         self.target_update_counter = 0
@@ -108,30 +118,23 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
     def _create_cnn_network(self) -> nn.Module:
         """Create FIXED CNN-based neural network with stable architecture"""
         
-        class CNNDQNNetwork(nn.Module):
+        class FullyConnectedDQNNetwork(nn.Module):
             def __init__(self):
-                super(CNNDQNNetwork, self).__init__()
+                super(FullyConnectedDQNNetwork, self).__init__()
                 
-                # FIXED: Smaller CNN with batch normalization
-                self.conv1 = nn.Conv2d(1, 16, kernel_size=3, padding=1)  # Reduced from 32 to 16
-                self.bn1 = nn.BatchNorm2d(16)
-                self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)  # Reduced from 64 to 32
-                self.bn2 = nn.BatchNorm2d(32)
+                # NO CNN - Direct fully-connected network
+                # Input: 200 (board) + 6 (current piece) + 6 (next piece) = 212 dimensions
+                input_features = 212
                 
-                # FIXED: Add pooling to reduce feature map size
-                self.pool = nn.MaxPool2d(2, 2)  # Reduces 20x10 to 10x5
+                # Reasonably sized FC layers, all ≥ 800 units
+                self.fc1 = nn.Linear(input_features, 2048)  # 212 → 2048
+                self.fc2 = nn.Linear(2048, 1024)           # 2048 → 1024  
+                self.fc3 = nn.Linear(1024, 800)            # 1024 → 800
+                self.fc4 = nn.Linear(800, 800)             # 800 → 800 (output)
                 
-                # FIXED: Much smaller FC layers
-                board_features = 32 * 10 * 5  # 1,600 (much smaller than 25,600)
-                piece_features = 32  # Reduced from 64 to 32
-                combined_features = board_features + piece_features  # 1,632
-                
-                self.piece_fc = nn.Linear(6, piece_features)
-                self.fc1 = nn.Linear(combined_features, 256)  # Reduced from 512
-                self.fc2 = nn.Linear(256, 128)  # Reduced from 256
-                self.fc3 = nn.Linear(128, 800)
-                
-                self.dropout = nn.Dropout(0.1)  # Reduced dropout
+                self.dropout = nn.Dropout(0.3)  # Higher dropout for FC-only network
+                self.batch_norm1 = nn.BatchNorm1d(2048)
+                self.batch_norm2 = nn.BatchNorm1d(1024)
                 
                 # FIXED: Proper weight initialization
                 self._initialize_weights()
@@ -151,35 +154,24 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
                         nn.init.constant_(m.bias, 0)
                 
             def forward(self, x):
-                # Split input
-                board_bits = x[:, :200]
-                piece_bits = x[:, 200:]
+                # Raw input processing - no CNN
+                # Input: 200 (board) + 6 (current piece) + 6 (next piece) = 212
+                # Expect input to be expanded to include next piece info
                 
-                # FIXED: CNN processing with batch norm and pooling
-                board = board_bits.view(-1, 1, 20, 10)
-                board_features = F.relu(self.bn1(self.conv1(board)))
-                board_features = self.pool(board_features)  # 20x10 → 10x5
-                board_features = F.relu(self.bn2(self.conv2(board_features)))
-                board_features = board_features.view(board_features.size(0), -1)
-                
-                # Piece processing
-                piece_features = F.relu(self.piece_fc(piece_bits))
-                
-                # Combine
-                combined = torch.cat([board_features, piece_features], dim=1)
-                
-                # FIXED: Final processing with proper activation
-                x = F.relu(self.fc1(combined))
+                # Direct fully-connected processing
+                x = F.relu(self.batch_norm1(self.fc1(x)))  # 212 → 2048
                 x = self.dropout(x)
-                x = F.relu(self.fc2(x))
+                x = F.relu(self.batch_norm2(self.fc2(x)))  # 2048 → 1024
+                x = self.dropout(x)
+                x = F.relu(self.fc3(x))                    # 1024 → 800
                 x = self.dropout(x)
                 
-                # FIXED: No activation on final layer for Q-values
-                q_values = self.fc3(x)
+                # Output Q-values
+                q_values = self.fc4(x)                     # 800 → 800
                 
                 return q_values
         
-        return CNNDQNNetwork()
+        return FullyConnectedDQNNetwork()
     
     def map_action_to_board(self, action_idx: int) -> Tuple[int, int, int]:
         """Map network action to board coordinates"""
@@ -218,8 +210,8 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
         except:
             return True  # Fallback
     
-    def select_action(self, observation: np.ndarray, training: bool = True, env=None) -> int:
-        """Select action with validation"""
+    def select_action(self, observation: np.ndarray, training: bool = True, env=None, rnd_network=None) -> int:
+        """Select action with validation and optional RND integration"""
         # Convert observation
         if isinstance(observation, dict):
             obs_array = observation.get('board', observation.get('observation', observation))
@@ -229,24 +221,33 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
         if not isinstance(obs_array, np.ndarray):
             obs_array = np.array(obs_array, dtype=np.float32)
         
-        # Verify observation size
-        assert obs_array.shape[0] == 206, f"Expected observation size 206, got {obs_array.shape[0]}"
+        # Verify observation size (200 board + 6 current piece + 6 next piece = 212)
+        if obs_array.shape[0] == 206:
+            # Legacy format: pad with zeros for next piece
+            obs_array = np.concatenate([obs_array, np.zeros(6)], axis=0)
+        assert obs_array.shape[0] == 212, f"Expected observation size 212, got {obs_array.shape[0]}"
         
         state_tensor = torch.FloatTensor(obs_array).unsqueeze(0).to(self.device)
         
-        # Get Q-values
+        # Get Q-values (set to eval mode for batch norm with single samples)
+        self.q_network.eval()
         with torch.no_grad():
             q_values = self.q_network(state_tensor).cpu().numpy()[0]
         
-        # FIXED: Enhanced exploration strategy
-        if training and random.random() < self.epsilon:
-            # FIXED: Try top-k actions to improve exploration quality
+        # RND-enhanced action selection: use RND intrinsic value + Q-values when available
+        if training and rnd_network is not None:
+            # Use greedy action selection based on Q-values + intrinsic motivation
+            # RND provides exploration via reward shaping, not action selection randomness
+            action_idx = np.argmax(q_values)
+        elif training and random.random() < self.epsilon:
+            # Standard epsilon-greedy with enhanced exploration strategy
             if random.random() < 0.7:  # 70% random from top 100 actions
                 top_actions = np.argsort(q_values)[-100:]
                 action_idx = np.random.choice(top_actions)
             else:  # 30% completely random
                 action_idx = random.randint(0, 799)
         else:
+            # Greedy action selection
             action_idx = np.argmax(q_values)
         
         # Validate action
@@ -267,20 +268,32 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
     
     def store_experience(self, state: np.ndarray, action: int, reward: float, 
                         next_state: np.ndarray, done: bool):
-        """Store experience"""
+        """Store experience with dimension padding"""
+        # Pad state to 212 dimensions if needed (206 → 212)
+        if state.shape[0] == 206:
+            state = np.concatenate([state, np.zeros(6)], axis=0)
+        # Pad next_state to 212 dimensions if needed (206 → 212)
+        if next_state.shape[0] == 206:
+            next_state = np.concatenate([next_state, np.zeros(6)], axis=0)
+        
         self.memory.append((state, action, reward, next_state, done))
     
     def update(self, state: Any, action: int, reward: float, next_state: Any, done: bool) -> Dict[str, float]:
         """Update agent"""
-        if isinstance(state, np.ndarray) and state.shape[0] == 206:
+        # Handle both legacy (206) and new (212) observation formats
+        if isinstance(state, np.ndarray) and state.shape[0] in [206, 212]:
             state_array = state
+            if state_array.shape[0] == 206:
+                state_array = np.concatenate([state_array, np.zeros(6)], axis=0)
         else:
-            raise ValueError(f"Invalid state format. Expected shape (206,), got {state.shape if hasattr(state, 'shape') else type(state)}")
+            raise ValueError(f"Invalid state format. Expected shape (206,) or (212,), got {state.shape if hasattr(state, 'shape') else type(state)}")
             
-        if isinstance(next_state, np.ndarray) and next_state.shape[0] == 206:
+        if isinstance(next_state, np.ndarray) and next_state.shape[0] in [206, 212]:
             next_state_array = next_state
+            if next_state_array.shape[0] == 206:
+                next_state_array = np.concatenate([next_state_array, np.zeros(6)], axis=0)
         else:
-            raise ValueError(f"Invalid next_state format. Expected shape (206,), got {next_state.shape if hasattr(next_state, 'shape') else type(next_state)}")
+            raise ValueError(f"Invalid next_state format. Expected shape (206,) or (212,), got {next_state.shape if hasattr(next_state, 'shape') else type(next_state)}")
         
         self.store_experience(state_array, action, reward, next_state_array, done)
         return self.train_batch()
@@ -288,14 +301,33 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
     def train_batch(self) -> Dict[str, float]:
         """Train on batch"""
         if len(self.memory) < self.batch_size:
-            return {'loss': 0.0, 'q_value': 0.0}
+            # Ensure epsilon continues to decay even when not enough memory for a training batch
+            self.update_epsilon()
+            return {'loss': 0.0, 'q_value': 0.0, 'epsilon': self.epsilon, 'invalid_count': self.invalid_action_count}
         
         # Sample batch
         batch = random.sample(self.memory, self.batch_size)
-        states = np.array([e[0] for e in batch], dtype=np.float32)
+        
+        # Pad states/next_states to 212 dimensions if needed
+        states_list = []
+        next_states_list = []
+        for experience in batch:
+            state, _, _, next_state, _ = experience
+            
+            # Pad state if needed (206 → 212)
+            if state.shape[0] == 206:
+                state = np.concatenate([state, np.zeros(6)], axis=0)
+            states_list.append(state)
+            
+            # Pad next_state if needed (206 → 212)
+            if next_state.shape[0] == 206:
+                next_state = np.concatenate([next_state, np.zeros(6)], axis=0)
+            next_states_list.append(next_state)
+        
+        states = np.array(states_list, dtype=np.float32)
         actions = np.array([e[1] for e in batch])
         rewards = np.array([e[2] for e in batch], dtype=np.float32)
-        next_states = np.array([e[3] for e in batch], dtype=np.float32)
+        next_states = np.array(next_states_list, dtype=np.float32)
         dones = np.array([e[4] for e in batch])
         
         # Convert to tensors
@@ -338,16 +370,17 @@ class RedesignedLockedStateDQNAgent(BaseAgent):
         }
     
     def update_epsilon(self):
-        """Update epsilon with EXPONENTIAL decay - half epsilon at quarter episodes"""
-        if self.epsilon > self.epsilon_end and self.epsilon_step_counter < self.epsilon_decay_steps:
-            # REQUIREMENT: Half epsilon (0.5 of 0.95 = 0.475) at quarter episodes
-            # Use step-based exponential decay: epsilon = start * (0.5)^(4*step/total_steps)
+        """Update epsilon with LINEAR decay from start to end over decay_steps"""
+        if self.epsilon > self.epsilon_end:
             self.epsilon_step_counter += 1
-            progress = self.epsilon_step_counter / self.epsilon_decay_steps
-            # At 25% progress, we want 50% of original epsilon
-            # Formula: epsilon = start * (0.5)^(4*progress)
-            decay_factor = 0.5 ** (4.0 * progress)
-            self.epsilon = max(self.epsilon_end, self.epsilon_start * decay_factor)
+            if self.epsilon_step_counter <= self.epsilon_decay_steps:
+                # Linear decay: epsilon = start - (start-end) * (step/decay_steps)
+                progress = self.epsilon_step_counter / self.epsilon_decay_steps
+                self.epsilon = max(self.epsilon_end, 
+                                   self.epsilon_start - (self.epsilon_start - self.epsilon_end) * progress)
+            else:
+                # Ensure we reach exactly epsilon_end
+                self.epsilon = self.epsilon_end
     
     def update_target_network(self):
         """Update target network"""

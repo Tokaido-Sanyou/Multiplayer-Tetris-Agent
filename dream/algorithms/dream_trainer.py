@@ -102,7 +102,12 @@ class DREAMTrainer:
         rewards = []
         dones = []
         
-        obs = self.env.reset()  # tuple of 425 elements
+        obs = self.env.reset()  # array of 206 elements
+        
+        # FIXED: Pad observation dimensions (206→212) 
+        if isinstance(obs, np.ndarray) and obs.shape[0] == 206:
+            obs = np.concatenate([obs, np.zeros(6)], axis=0)
+        
         episode_reward = 0
         episode_length = 0
         
@@ -121,6 +126,10 @@ class DREAMTrainer:
             
             # Take environment step
             next_obs, reward, done, info = self.env.step(action)
+            
+            # FIXED: Pad next observation dimensions (206→212)
+            if isinstance(next_obs, np.ndarray) and next_obs.shape[0] == 206:
+                next_obs = np.concatenate([next_obs, np.zeros(6)], axis=0)
             
             rewards.append(reward)
             dones.append(done)

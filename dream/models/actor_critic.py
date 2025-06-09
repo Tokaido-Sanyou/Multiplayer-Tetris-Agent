@@ -21,7 +21,7 @@ class Actor(nn.Module):
     """
     
     def __init__(self,
-                 state_dim: int = 230,
+                 state_dim: int = 212,
                  action_dim: int = 8,
                  hidden_dim: int = 400,
                  action_mode: str = 'direct',
@@ -129,7 +129,7 @@ class Critic(nn.Module):
     """
     
     def __init__(self,
-                 state_dim: int = 230,
+                 state_dim: int = 212,
                  hidden_dim: int = 400,
                  num_layers: int = 2):
         super().__init__()
@@ -168,7 +168,7 @@ class ActorCritic(nn.Module):
     """
     
     def __init__(self,
-                 state_dim: int = 230,
+                 state_dim: int = 212,
                  action_dim: int = 8,
                  hidden_dim: int = 400,
                  action_mode: str = 'direct',
@@ -345,7 +345,7 @@ class DynamicActorCritic(ActorCritic):
     """
     
     def __init__(self, 
-                 state_dim: int = 230,
+                 state_dim: int = 212,
                  hidden_dim: int = 400,
                  num_layers: int = 2):
         

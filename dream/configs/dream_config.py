@@ -30,16 +30,14 @@ class DREAMConfig:
         
         # Model architecture - Reduced for 500k parameter limit
         self.world_model = {
-            'state_dim': 16,
-            'rnn_hidden_dim': 64,
-            'stochastic_dim': 16,
-            'hidden_dim': 128,
+            'observation_dim': 206,  # FIXED: Corrected to match actual environment dimension
             'action_dim': 8 if action_mode == 'direct' else 200,
-            'observation_shape': (1, 20, 10)
+            'hidden_dim': 128,
+            'state_dim': 16
         }
         
         self.actor_critic = {
-            'state_dim': 425,  # Match environment observation size (425 binary features)
+            'state_dim': 206,  # FIXED: Updated to match environment dimension
             'action_dim': 8 if action_mode == 'direct' else 200,
             'hidden_dim': 256,  # Reduced from 400
             'action_mode': action_mode
