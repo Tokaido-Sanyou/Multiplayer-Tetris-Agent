@@ -1,0 +1,254 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{booktabs}
+
+\geometry{margin=1in}
+
+\title{Mathematical Representation of DREAM Actor-Critic Network}
+\author{Tetris Training System}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Network Architecture}
+
+The DREAM network is an actor-critic architecture designed for direct Tetris action selection. It employs a shared feature extraction backbone with separate actor and critic heads for policy learning and value estimation.
+
+\subsection{Input Representation}
+
+The input state $\mathbf{s} \in \mathbb{R}^{206}$ is composed of:
+
+\begin{align}
+\mathbf{s} = [\mathbf{b}, \mathbf{c}]
+\end{align}
+
+where:
+\begin{itemize}
+    \item $\mathbf{b} \in \{0,1\}^{200}$: Flattened 10×20 board state (binary occupancy)
+    \item $\mathbf{c} \in \mathbb{R}^{6}$: Current piece features (type, rotation, position)
+\end{itemize}
+
+\subsection{Shared Feature Extraction}
+
+The shared backbone consists of three fully connected layers:
+
+\subsubsection{Shared Layer 1}
+\begin{align}
+\mathbf{h}_1^{(pre)} &= \mathbf{W}_1^{(shared)} \mathbf{s} + \mathbf{b}_1^{(shared)} \\
+\mathbf{h}_1^{(act)} &= \text{ReLU}(\mathbf{h}_1^{(pre)}) \\
+\mathbf{h}_1 &= \text{Dropout}(\mathbf{h}_1^{(act)}, p=0.3)
+\end{align}
+
+where $\mathbf{W}_1^{(shared)} \in \mathbb{R}^{512 \times 206}$, $\mathbf{b}_1^{(shared)} \in \mathbb{R}^{512}$, and $\mathbf{h}_1 \in \mathbb{R}^{512}$.
+
+\subsubsection{Shared Layer 2}
+\begin{align}
+\mathbf{h}_2^{(pre)} &= \mathbf{W}_2^{(shared)} \mathbf{h}_1 + \mathbf{b}_2^{(shared)} \\
+\mathbf{h}_2^{(act)} &= \text{ReLU}(\mathbf{h}_2^{(pre)}) \\
+\mathbf{h}_2 &= \text{Dropout}(\mathbf{h}_2^{(act)}, p=0.3)
+\end{align}
+
+where $\mathbf{W}_2^{(shared)} \in \mathbb{R}^{256 \times 512}$, $\mathbf{b}_2^{(shared)} \in \mathbb{R}^{256}$, and $\mathbf{h}_2 \in \mathbb{R}^{256}$.
+
+\subsubsection{Shared Layer 3}
+\begin{align}
+\mathbf{h}_3^{(pre)} &= \mathbf{W}_3^{(shared)} \mathbf{h}_2 + \mathbf{b}_3^{(shared)} \\
+\mathbf{h}_3^{(act)} &= \text{ReLU}(\mathbf{h}_3^{(pre)}) \\
+\mathbf{h}_3 &= \text{Dropout}(\mathbf{h}_3^{(act)}, p=0.3)
+\end{align}
+
+where $\mathbf{W}_3^{(shared)} \in \mathbb{R}^{128 \times 256}$, $\mathbf{b}_3^{(shared)} \in \mathbb{R}^{128}$, and $\mathbf{h}_3 \in \mathbb{R}^{128}$.
+
+\subsection{Actor Network}
+
+The actor network maps shared features to action probabilities:
+
+\begin{align}
+\mathbf{a}_{\text{logits}} &= \mathbf{W}_{\text{actor}} \mathbf{h}_3 + \mathbf{b}_{\text{actor}} \\
+\boldsymbol{\pi}(\mathbf{s}) &= \text{Softmax}(\mathbf{a}_{\text{logits}})
+\end{align}
+
+where $\mathbf{W}_{\text{actor}} \in \mathbb{R}^{8 \times 128}$, $\mathbf{b}_{\text{actor}} \in \mathbb{R}^{8}$, and $\boldsymbol{\pi}(\mathbf{s}) \in \mathbb{R}^{8}$.
+
+The 8-dimensional output corresponds to Tetris actions:
+\begin{itemize}
+    \item Action 0: Move Left
+    \item Action 1: Move Right  
+    \item Action 2: Rotate Clockwise
+    \item Action 3: Rotate Counter-clockwise
+    \item Action 4: Soft Drop
+    \item Action 5: Hard Drop
+    \item Action 6: Hold Piece
+    \item Action 7: No Operation
+\end{itemize}
+
+\subsection{Critic Network}
+
+The critic network estimates state values:
+
+\begin{align}
+V(\mathbf{s}) = \mathbf{W}_{\text{critic}} \mathbf{h}_3 + \mathbf{b}_{\text{critic}}
+\end{align}
+
+where $\mathbf{W}_{\text{critic}} \in \mathbb{R}^{1 \times 128}$, $\mathbf{b}_{\text{critic}} \in \mathbb{R}^{1}$, and $V(\mathbf{s}) \in \mathbb{R}$.
+
+\subsection{Action Selection}
+
+\subsubsection{Training Mode}
+During training, actions are sampled from the policy distribution:
+
+\begin{align}
+a_t \sim \text{Categorical}(\boldsymbol{\pi}(\mathbf{s}_t))
+\end{align}
+
+\subsubsection{Enhanced Exploration Mode}
+In enhanced exploration mode, temperature scaling and epsilon-greedy are combined:
+
+\begin{align}
+\boldsymbol{\pi}_{\text{temp}}(\mathbf{s}) &= \text{Softmax}\left(\frac{\mathbf{a}_{\text{logits}}}{\tau}\right) \\
+a_t &= \begin{cases}
+\text{random action} & \text{with probability } \epsilon_t \\
+\sim \text{Categorical}(\boldsymbol{\pi}_{\text{temp}}(\mathbf{s}_t)) & \text{with probability } 1 - \epsilon_t
+\end{cases}
+\end{align}
+
+where $\tau$ is the temperature parameter and $\epsilon_t$ decays over episodes.
+
+\subsection{Loss Functions}
+
+\subsubsection{Actor Loss}
+The actor is trained using policy gradient with entropy regularization:
+
+\begin{align}
+\mathcal{L}_{\text{actor}} = -\mathbb{E}_{t} \left[ \log \pi(a_t | \mathbf{s}_t) \cdot A_t \right] - \beta \mathbb{E}_{t} \left[ H(\boldsymbol{\pi}(\mathbf{s}_t)) \right]
+\end{align}
+
+where:
+\begin{itemize}
+    \item $A_t = R_t - V(\mathbf{s}_t)$: Advantage estimate
+    \item $H(\boldsymbol{\pi}) = -\sum_{a} \pi(a) \log \pi(a)$: Entropy
+    \item $\beta$: Entropy regularization coefficient
+\end{itemize}
+
+\subsubsection{Critic Loss}
+The critic is trained using mean squared error:
+
+\begin{align}
+\mathcal{L}_{\text{critic}} = \mathbb{E}_{t} \left[ (R_t - V(\mathbf{s}_t))^2 \right]
+\end{align}
+
+\subsubsection{Combined Loss}
+The total loss combines actor and critic objectives:
+
+\begin{align}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{actor}} + \mathcal{L}_{\text{critic}}
+\end{align}
+
+\subsection{Curiosity-Driven Exploration (Enhanced Mode)}
+
+In enhanced exploration mode, curiosity-driven intrinsic rewards are added:
+
+\subsubsection{Forward Model}
+\begin{align}
+\hat{\mathbf{s}}_{t+1} = f_{\theta}(\mathbf{s}_t, a_t)
+\end{align}
+
+\subsubsection{Intrinsic Reward}
+\begin{align}
+r_t^{\text{intrinsic}} = \alpha \cdot \|\mathbf{s}_{t+1} - \hat{\mathbf{s}}_{t+1}\|^2
+\end{align}
+
+\subsubsection{Combined Reward}
+\begin{align}
+r_t^{\text{total}} = r_t^{\text{extrinsic}} + r_t^{\text{intrinsic}}
+\end{align}
+
+\subsection{Parameter Count by Mode}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Component & Basic & Enhanced & Fixed & Comprehensive \\
+\midrule
+Shared Layer 1 & 105,984 & 105,984 & 105,984 & 105,984 \\
+Shared Layer 2 & 131,328 & 131,328 & 131,328 & 131,328 \\
+Shared Layer 3 & 32,896 & 32,896 & 32,896 & 32,896 \\
+Actor Head & 1,032 & 1,032 & 1,032 & 1,032 \\
+Critic Head & 129 & 129 & 129 & 129 \\
+Forward Model & 0 & 228,544 & 0 & 228,544 \\
+Batch Norm & 0 & 0 & 136,000 & 136,000 \\
+\midrule
+\textbf{Total} & \textbf{407,209} & \textbf{635,913} & \textbf{543,209} & \textbf{635,913} \\
+\bottomrule
+\end{tabular}
+\caption{Parameter breakdown by DREAM mode}
+\end{table}
+
+\subsection{Episode-Based Epsilon Decay}
+
+For enhanced modes, epsilon decays per episode rather than per step:
+
+\begin{align}
+\epsilon_{\text{episode}} &= \max(\epsilon_{\text{end}}, \epsilon_{\text{start}} \cdot \text{decay\_rate}^{\text{episode}}) \\
+\text{decay\_rate} &= \left(\frac{\epsilon_{\text{end}}}{\epsilon_{\text{start}}}\right)^{\frac{1}{0.75 \cdot \text{total\_episodes}}}
+\end{align}
+
+This ensures epsilon reaches its minimum value by 75\% of total training episodes.
+
+\subsection{Sequence Training}
+
+DREAM processes sequences of length $T$:
+
+\begin{align}
+\text{sequence} &= \{(\mathbf{s}_t, a_t, r_t)\}_{t=0}^{T-1} \\
+R_t &= \sum_{k=0}^{T-1-t} \gamma^k r_{t+k} \\
+A_t &= R_t - V(\mathbf{s}_t)
+\end{align}
+
+where sequences are extracted from completed episodes in the replay buffer.
+
+\subsection{Reward Design}
+In our Tetris environment we support two reward modes: lines-only and standard.
+
+\subsubsection*{Lines-Only Mode}
+Only line-clear rewards are given:
+\begin{align}
+\ell_{\mathrm{lines}}(k) &=
+  \begin{cases}0 & k=0,\\
+                   1 & k=1,\\
+                   3 & k=2,\\
+                   5 & k=3,\\
+                   8 & k=4,
+  \end{cases}
+\\
+r_t &= \ell_{\mathrm{lines}}(\text{lines}_t)\,(\mathrm{level}+1)
+\end{align}
+
+\subsubsection*{Standard Mode}
+Enhanced shaping with board features and game-over penalty:
+\begin{align}
+\ell_{\mathrm{std}}(k) &=
+  \begin{cases}0 & k=0,\\
+                   3 & k=1,\\
+                   5 & k=2,\\
+                   8 & k=3,\\
+                  12 & k=4,
+  \end{cases}\\
+r_t &= \ell_{\mathrm{std}}(\text{lines}_t)\,(\mathrm{level}+1)
+      -100\,\mathbf{1}[\text{game\_over}]\\
+      &\quad -0.5\,(\Delta\text{aggregate\\_height})
+       -0.5\,(\Delta\text{holes})
+       -0.5\,(\Delta\text{bumpiness})
+       +10\,(\text{lines}_t)
+\end{align}
+
+\end{document}

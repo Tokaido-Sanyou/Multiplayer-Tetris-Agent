@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="650" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+     refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="650" fill="#f8f9fa"/>
+  
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#333">
+    DREAM Actor-Critic Network Flow
+  </text>
+  
+  <!-- Input State -->
+  <rect x="50" y="80" width="120" height="60" fill="#e3f2fd" stroke="#1976d2" stroke-width="2" rx="5"/>
+  <text x="110" y="100" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">State Input</text>
+  <text x="110" y="115" text-anchor="middle" font-size="10" fill="#666">Board: 200</text>
+  <text x="110" y="125" text-anchor="middle" font-size="10" fill="#666">Piece: 6</text>
+  <text x="110" y="135" text-anchor="middle" font-size="10" fill="#666">Total: 206</text>
+  
+  <!-- Shared Network -->
+  <rect x="230" y="80" width="140" height="80" fill="#fff3e0" stroke="#f57c00" stroke-width="2" rx="5"/>
+  <text x="300" y="100" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Shared Network</text>
+  <text x="300" y="115" text-anchor="middle" font-size="10" fill="#666">Layer 1: 206→512</text>
+  <text x="300" y="125" text-anchor="middle" font-size="10" fill="#666">Layer 2: 512→256</text>
+  <text x="300" y="135" text-anchor="middle" font-size="10" fill="#666">Layer 3: 256→128</text>
+  <text x="300" y="145" text-anchor="middle" font-size="10" fill="#666">ReLU + Dropout</text>
+  
+  <!-- Actor Head -->
+  <rect x="150" y="220" width="120" height="60" fill="#e8f5e8" stroke="#388e3c" stroke-width="2" rx="5"/>
+  <text x="210" y="240" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Actor Head</text>
+  <text x="210" y="255" text-anchor="middle" font-size="10" fill="#666">128 → 8</text>
+  <text x="210" y="265" text-anchor="middle" font-size="10" fill="#666">Softmax</text>
+  <text x="210" y="275" text-anchor="middle" font-size="10" fill="#666">Policy π(s)</text>
+  
+  <!-- Critic Head -->
+  <rect x="330" y="220" width="120" height="60" fill="#fce4ec" stroke="#c2185b" stroke-width="2" rx="5"/>
+  <text x="390" y="240" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Critic Head</text>
+  <text x="390" y="255" text-anchor="middle" font-size="10" fill="#666">128 → 1</text>
+  <text x="390" y="265" text-anchor="middle" font-size="10" fill="#666">Linear</text>
+  <text x="390" y="275" text-anchor="middle" font-size="10" fill="#666">Value V(s)</text>
+  
+  <!-- Action Selection -->
+  <rect x="150" y="320" width="120" height="80" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="2" rx="5"/>
+  <text x="210" y="340" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Action Selection</text>
+  <text x="210" y="355" text-anchor="middle" font-size="10" fill="#666">Sample from π(s)</text>
+  <text x="210" y="365" text-anchor="middle" font-size="10" fill="#666">or ε-greedy</text>
+  <text x="210" y="375" text-anchor="middle" font-size="10" fill="#666">Temperature</text>
+  <text x="210" y="385" text-anchor="middle" font-size="10" fill="#666">8 actions</text>
+  
+  <!-- Sequence Training -->
+  <rect x="330" y="320" width="120" height="80" fill="#fff8e1" stroke="#ffa000" stroke-width="2" rx="5"/>
+  <text x="390" y="340" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Sequence Training</text>
+  <text x="390" y="355" text-anchor="middle" font-size="10" fill="#666">Actor Loss</text>
+  <text x="390" y="365" text-anchor="middle" font-size="10" fill="#666">Critic Loss</text>
+  <text x="390" y="375" text-anchor="middle" font-size="10" fill="#666">Entropy Bonus</text>
+  <text x="390" y="385" text-anchor="middle" font-size="10" fill="#666">Advantage A(s,a)</text>
+  
+  <!-- Environment -->
+  <rect x="500" y="220" width="120" height="60" fill="#e1f5fe" stroke="#0277bd" stroke-width="2" rx="5"/>
+  <text x="560" y="240" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Environment</text>
+  <text x="560" y="255" text-anchor="middle" font-size="10" fill="#666">Tetris Game</text>
+  <text x="560" y="265" text-anchor="middle" font-size="10" fill="#666">Reward Signal</text>
+  <text x="560" y="275" text-anchor="middle" font-size="10" fill="#666">Next State</text>
+  
+  <!-- Exploration Updates -->
+  <rect x="500" y="320" width="140" height="80" fill="#f1f8e9" stroke="#689f38" stroke-width="2" rx="5"/>
+  <text x="570" y="340" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Exploration Updates</text>
+  <text x="570" y="355" text-anchor="middle" font-size="10" fill="#666">Epsilon Decay</text>
+  <text x="570" y="365" text-anchor="middle" font-size="10" fill="#666">Temperature Scaling</text>
+  <text x="570" y="375" text-anchor="middle" font-size="10" fill="#666">Curiosity Rewards</text>
+  <text x="570" y="385" text-anchor="middle" font-size="10" fill="#666">(Enhanced Mode)</text>
+  
+  <!-- Buffer Storage -->
+  <rect x="50" y="320" width="80" height="80" fill="#ede7f6" stroke="#512da8" stroke-width="2" rx="5"/>
+  <text x="90" y="340" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">Buffer</text>
+  <text x="90" y="355" text-anchor="middle" font-size="9" fill="#666">Sequences</text>
+  <text x="90" y="365" text-anchor="middle" font-size="9" fill="#666">Trajectories</text>
+  <text x="90" y="375" text-anchor="middle" font-size="9" fill="#666">Validation</text>
+  <text x="90" y="385" text-anchor="middle" font-size="9" fill="#666">Statistics</text>
+  
+  <!-- Arrows -->
+  <line x1="170" y1="120" x2="230" y2="120" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="300" y1="160" x2="210" y2="220" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="300" y1="160" x2="390" y2="220" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="210" y1="280" x2="210" y2="320" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="270" y1="360" x2="330" y2="360" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="450" y1="250" x2="500" y2="250" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="270" y1="340" x2="500" y2="340" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="560" y1="280" x2="560" y2="320" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="500" y1="240" x2="370" y2="120" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="130" y1="360" x2="150" y2="360" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="90" y1="320" x2="90" y2="140" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Network Statistics -->
+  <rect x="50" y="450" width="300" height="100" fill="#f0f0f0" stroke="#666" stroke-width="1" rx="5"/>
+  <text x="200" y="470" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">Network Statistics</text>
+  <text x="70" y="490" font-size="11" fill="#666">Basic Mode: 407,209 parameters</text>
+  <text x="70" y="505" font-size="11" fill="#666">Enhanced Mode: 635,913 parameters</text>
+  <text x="70" y="520" font-size="11" fill="#666">Input Dimension: 206</text>
+  <text x="70" y="535" font-size="11" fill="#666">Output Dimension: 8 actions</text>
+  
+  <!-- Action Space -->
+  <rect x="400" y="450" width="350" height="100" fill="#f0f0f0" stroke="#666" stroke-width="1" rx="5"/>
+  <text x="575" y="470" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">Action Space</text>
+  <text x="420" y="490" font-size="11" fill="#666">0: Move Left    1: Move Right    2: Rotate CW</text>
+  <text x="420" y="505" font-size="11" fill="#666">3: Rotate CCW   4: Soft Drop     5: Hard Drop</text>
+  <text x="420" y="520" font-size="11" fill="#666">6: Hold Piece   7: No Operation</text>
+  <text x="420" y="535" font-size="11" fill="#666">Direct environment control (8 discrete actions)</text>
+  
+  <!-- Training Modes -->
+  <rect x="50" y="570" width="700" height="60" fill="#e8eaf6" stroke="#3f51b5" stroke-width="1" rx="5"/>
+  <text x="400" y="590" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">Training Modes</text>
+  <text x="70" y="610" font-size="11" fill="#666">Basic: Standard actor-critic  |  Enhanced: ε-greedy + temperature + curiosity</text>
+  <text x="70" y="620" font-size="11" fill="#666">Fixed: Improved logging + validation  |  Comprehensive: All features combined</text>
+</svg>

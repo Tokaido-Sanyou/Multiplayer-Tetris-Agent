@@ -342,70 +342,13 @@ class TetrisEnv(gym.Env):
         else:
             return self._get_standard_reward(agent_idx, lines_cleared, game_over)
     
-    def _get_lines_only_reward(self, agent_idx: int, lines_cleared: int, game_over: bool):
-        """
-        Lines-only reward function for DQN training.
-        Only gives positive rewards for clearing lines, no other signals.
-        """
-        # Line clear rewards: exponentially increasing
-        line_rewards = {0: 0, 1: 1, 2: 3, 3: 5, 4: 8}
-        reward = line_rewards.get(lines_cleared, 0)
-        
-        # Scale by level for progression
-        reward *= (self.game.level + 1)
-        
-        # No penalties or bonuses for anything else
-        # Game over gives no additional penalty - let sparse rewards guide learning
-        return reward
-    
     def _get_standard_reward(self, agent_idx: int, lines_cleared: int, game_over: bool):
-        """Standard enhanced reward function with board features and shaping"""
-        player = self.players[agent_idx]
-        
-        # Updated line clear rewards: 1:3, 2:5, 3:8, 4:12
-        line_rewards = {0: 0, 1: 3, 2: 5, 3: 8, 4: 12}
-        reward = line_rewards.get(lines_cleared, 0) * (self.game.level + 1)
-        
-        # Game over penalty
-        if game_over:
-            return reward - 100
-        
-        # Calculate board features (color-independent)
-        grid = create_grid(player.locked_positions)
-        col_heights = []
-        for c in range(10):
-            height = 0
-            for r in range(20):
-                if grid[r][c] != (0, 0, 0):  # Any non-empty cell
-                    height = 20 - r
-                    break
-            col_heights.append(height)
-        
-        # Calculate features (removed max_height and wells)
-        aggregate_height = sum(col_heights)
-        holes = self._count_holes(grid)
-        bumpiness = sum(abs(col_heights[i] - col_heights[i + 1]) for i in range(9))
-        
-        curr_features = {
-            "lines": lines_cleared,
-            "aggregate_height": aggregate_height,
-            "holes": holes,
-            "bumpiness": bumpiness
-        }
-        
-        # Delta-based reward shaping (removed max_height and wells components)
-        prev = self.prev_features.get(agent_idx)
-        if prev:
-            # Reward improvements
-            reward += 10 * (prev["lines"])  # Lines cleared
-            reward += -0.5 * (curr_features["aggregate_height"] - prev["aggregate_height"])
-            reward += -0.5 * (curr_features["holes"] - prev["holes"])
-            reward += -0.5 * (curr_features["bumpiness"] - prev["bumpiness"])
-        
-        # Store current features for next step
-        self.prev_features[agent_idx] = curr_features
-        
-        return reward
+        """Only lines-cleared reward (standard shaping removed penalty)"""
+        return float(lines_cleared)
+    
+    def _get_lines_only_reward(self, agent_idx: int, lines_cleared: int, game_over: bool):
+        """Only reward for lines cleared"""
+        return float(lines_cleared)
     
     def _count_holes(self, grid):
         """Count holes in the grid (color-independent)"""
@@ -1127,6 +1070,10 @@ class TetrisEnv(gym.Env):
             # Note: draw_window already calls pygame.display.update()
             # Don't call clock.tick here as it might interfere with the display
             
+            # Process Pygame events to keep the window responsive
+            for _event in pygame.event.get():
+                pass
+         
         except Exception as e:
             logger.error(f"Error during rendering: {e}")
             # Fallback to simple rendering

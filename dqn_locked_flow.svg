@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+     refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="#f8f9fa"/>
+  
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#333">
+    DQN Locked State Network Flow
+  </text>
+  
+  <!-- Input State -->
+  <rect x="50" y="80" width="120" height="60" fill="#e3f2fd" stroke="#1976d2" stroke-width="2" rx="5"/>
+  <text x="110" y="100" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">State Input</text>
+  <text x="110" y="115" text-anchor="middle" font-size="10" fill="#666">Board: 200</text>
+  <text x="110" y="125" text-anchor="middle" font-size="10" fill="#666">Piece: 12</text>
+  <text x="110" y="135" text-anchor="middle" font-size="10" fill="#666">Total: 212</text>
+  
+  <!-- Input Processing -->
+  <rect x="230" y="80" width="120" height="60" fill="#fff3e0" stroke="#f57c00" stroke-width="2" rx="5"/>
+  <text x="290" y="100" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Input Processing</text>
+  <text x="290" y="115" text-anchor="middle" font-size="10" fill="#666">Concatenation</text>
+  <text x="290" y="125" text-anchor="middle" font-size="10" fill="#666">Normalization</text>
+  
+  <!-- Layer 1 -->
+  <rect x="410" y="80" width="120" height="60" fill="#e8f5e8" stroke="#388e3c" stroke-width="2" rx="5"/>
+  <text x="470" y="95" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Layer 1</text>
+  <text x="470" y="108" text-anchor="middle" font-size="10" fill="#666">212 → 2048</text>
+  <text x="470" y="118" text-anchor="middle" font-size="10" fill="#666">ReLU + BatchNorm</text>
+  <text x="470" y="128" text-anchor="middle" font-size="10" fill="#666">Dropout(0.3)</text>
+  
+  <!-- Layer 2 -->
+  <rect x="590" y="80" width="120" height="60" fill="#e8f5e8" stroke="#388e3c" stroke-width="2" rx="5"/>
+  <text x="650" y="95" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Layer 2</text>
+  <text x="650" y="108" text-anchor="middle" font-size="10" fill="#666">2048 → 1024</text>
+  <text x="650" y="118" text-anchor="middle" font-size="10" fill="#666">ReLU + BatchNorm</text>
+  <text x="650" y="128" text-anchor="middle" font-size="10" fill="#666">Dropout(0.3)</text>
+  
+  <!-- Layer 3 -->
+  <rect x="410" y="180" width="120" height="60" fill="#e8f5e8" stroke="#388e3c" stroke-width="2" rx="5"/>
+  <text x="470" y="195" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Layer 3</text>
+  <text x="470" y="208" text-anchor="middle" font-size="10" fill="#666">1024 → 800</text>
+  <text x="470" y="218" text-anchor="middle" font-size="10" fill="#666">ReLU</text>
+  <text x="470" y="228" text-anchor="middle" font-size="10" fill="#666">Dropout(0.3)</text>
+  
+  <!-- Layer 4 -->
+  <rect x="590" y="180" width="120" height="60" fill="#e8f5e8" stroke="#388e3c" stroke-width="2" rx="5"/>
+  <text x="650" y="195" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Layer 4</text>
+  <text x="650" y="208" text-anchor="middle" font-size="10" fill="#666">800 → 800</text>
+  <text x="650" y="218" text-anchor="middle" font-size="10" fill="#666">Linear Output</text>
+  <text x="650" y="228" text-anchor="middle" font-size="10" fill="#666">Q-Values</text>
+  
+  <!-- Action Selection -->
+  <rect x="410" y="280" width="120" height="60" fill="#fce4ec" stroke="#c2185b" stroke-width="2" rx="5"/>
+  <text x="470" y="295" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Action Selection</text>
+  <text x="470" y="308" text-anchor="middle" font-size="10" fill="#666">Epsilon-Greedy</text>
+  <text x="470" y="318" text-anchor="middle" font-size="10" fill="#666">argmax Q(s,a)</text>
+  <text x="470" y="328" text-anchor="middle" font-size="10" fill="#666">800 positions</text>
+  
+  <!-- Training Loop -->
+  <rect x="590" y="280" width="120" height="60" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="2" rx="5"/>
+  <text x="650" y="295" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Training Loop</text>
+  <text x="650" y="308" text-anchor="middle" font-size="10" fill="#666">Experience Replay</text>
+  <text x="650" y="318" text-anchor="middle" font-size="10" fill="#666">Target Network</text>
+  <text x="650" y="328" text-anchor="middle" font-size="10" fill="#666">DQN Loss</text>
+  
+  <!-- Environment -->
+  <rect x="230" y="380" width="120" height="60" fill="#fff8e1" stroke="#ffa000" stroke-width="2" rx="5"/>
+  <text x="290" y="395" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">Environment</text>
+  <text x="290" y="408" text-anchor="middle" font-size="10" fill="#666">Tetris Game</text>
+  <text x="290" y="418" text-anchor="middle" font-size="10" fill="#666">Reward Signal</text>
+  <text x="290" y="428" text-anchor="middle" font-size="10" fill="#666">Next State</text>
+  
+  <!-- Arrows -->
+  <line x1="170" y1="110" x2="230" y2="110" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="350" y1="110" x2="410" y2="110" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="530" y1="110" x2="590" y2="110" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="650" y1="140" x2="650" y2="180" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="590" y1="210" x2="530" y2="210" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="470" y1="240" x2="470" y2="280" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="530" y1="310" x2="590" y2="310" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="590" y1="340" x2="350" y2="380" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="290" y1="380" x2="290" y2="140" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Parameter Count -->
+  <rect x="50" y="480" width="300" height="80" fill="#f0f0f0" stroke="#666" stroke-width="1" rx="5"/>
+  <text x="200" y="500" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">Network Statistics</text>
+  <text x="70" y="520" font-size="11" fill="#666">Total Parameters: 4,001,344</text>
+  <text x="70" y="535" font-size="11" fill="#666">Input Dimension: 212</text>
+  <text x="70" y="550" font-size="11" fill="#666">Output Dimension: 800 (locked positions)</text>
+  
+  <!-- Action Space -->
+  <rect x="450" y="480" width="300" height="80" fill="#f0f0f0" stroke="#666" stroke-width="1" rx="5"/>
+  <text x="600" y="500" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">Action Space Mapping</text>
+  <text x="470" y="520" font-size="11" fill="#666">action_idx = y * 40 + x * 4 + rotation</text>
+  <text x="470" y="535" font-size="11" fill="#666">x ∈ [0,9], y ∈ [0,19], r ∈ [0,3]</text>
+  <text x="470" y="550" font-size="11" fill="#666">Total: 10 × 20 × 4 = 800 positions</text>
+</svg>
